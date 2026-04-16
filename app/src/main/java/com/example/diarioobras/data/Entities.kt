@@ -182,11 +182,12 @@ data class ServicoEntity(
     val longitude: Double? = null,
     val nomeRua: String? = null,
     val fotoUri: String? = null,
+    val fotoCavaAbertaUri: String? = null,
     val fotoConclusaoUri: String? = null,
     val sincronizado: Boolean = false,
     val aberturaCava: String = "",
     val limpezaEntulho: String = "",
-)
+  )
 
 @Entity(
     tableName = "subservicos",

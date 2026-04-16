@@ -9,15 +9,20 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,7 +43,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -52,9 +59,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
-import androidx.compose.foundation.clickable
-import androidx.compose.material3.Card
-import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 
 private val LISTA_ABERTURA_CAVA = listOf(
     "Já aberta",
@@ -79,6 +88,10 @@ private fun criarUriParaFoto(context: Context): Uri {
     )
 }
 
+private fun normalizarDecimal(valor: String): String {
+    return valor.replace(",", ".")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServicoFormScreen(
@@ -98,8 +111,8 @@ fun ServicoFormScreen(
 
     var servicoIdAtual by remember { mutableLongStateOf(servicoId) }
 
-    var numeroProtocolo by remember { mutableStateOf("") }
     var ordemServico by remember { mutableStateOf("") }
+    var numeroProtocolo by remember { mutableStateOf("") }
     var enderecoServico by remember { mutableStateOf("") }
 
     var aberturaCava by remember { mutableStateOf("") }
@@ -108,21 +121,28 @@ fun ServicoFormScreen(
     var limpezaEntulho by remember { mutableStateOf("") }
     var menuLimpezaExpandido by remember { mutableStateOf(false) }
 
+    var comprimento by remember { mutableStateOf("") }
+    var largura by remember { mutableStateOf("") }
+    var espessura by remember { mutableStateOf("") }
+
+    val larguraFocusRequester = remember { FocusRequester() }
+    val espessuraFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
     var fotoAntesUri by remember { mutableStateOf<Uri?>(null) }
+    var fotoCavaAbertaUri by remember { mutableStateOf<Uri?>(null) }
+    var fotoConclusaoUri by remember { mutableStateOf<Uri?>(null) }
+    var versaoPreviewFotos by remember { mutableStateOf(0) }
+
     var latitudeAtual by remember { mutableStateOf<Double?>(null) }
     var longitudeAtual by remember { mutableStateOf<Double?>(null) }
 
     var mostrarFotoAntesAmpliada by remember { mutableStateOf(false) }
+    var mostrarFotoCavaAbertaAmpliada by remember { mutableStateOf(false) }
 
-    var fotoCavaAbertaUri by remember { mutableStateOf<Uri?>(null) }
+    var fotoEmCaptura by remember { mutableStateOf("ANTES") }
 
-    // Campos preservados para evitar perda de dados em edição
-    var comprimentoPersistido by remember { mutableStateOf(0.0) }
-    var larguraPersistida by remember { mutableStateOf(0.0) }
-    var alturaPersistida by remember { mutableStateOf(0.0) }
-    var inicioPersistido by remember { mutableStateOf<String?>(null) }
-    var fimPersistido by remember { mutableStateOf<String?>(null) }
-    var fotoConclusaoUri by remember { mutableStateOf<Uri?>(null) }
+    val regexDecimal = Regex("^\\d*([.,]\\d*)?$")
 
     val preencherEnderecoPorCoordenada: (Double, Double) -> Unit = { latitude, longitude ->
         try {
@@ -197,15 +217,20 @@ fun ServicoFormScreen(
             ordemServico = ordemServico.toIntOrNull() ?: 0,
             numeroProtocolo = numeroProtocolo,
             endereco = enderecoServico,
-            comprimento = comprimentoPersistido,
-            largura = larguraPersistida,
-            altura = alturaPersistida,
-            inicio = inicioPersistido,
-            fim = fimPersistido,
+            comprimento = comprimento.toDoubleOrNull() ?: 0.0,
+            largura = largura.toDoubleOrNull() ?: 0.0,
+            altura = (espessura.toDoubleOrNull() ?: 0.0) / 100.0,
+            inicio = null,
+            fim = null,
             latitude = latitudeAtual,
             longitude = longitudeAtual,
             nomeRua = enderecoServico.ifBlank { null },
             fotoUri = fotoAntesUri?.toString(),
+
+            // Se o seu ServicoEntity já tiver esse campo, ele será salvo.
+            // Se ainda não tiver, apague esta linha por enquanto para compilar.
+            fotoCavaAbertaUri = fotoCavaAbertaUri?.toString(),
+
             fotoConclusaoUri = fotoConclusaoUri?.toString(),
             aberturaCava = aberturaCava,
             limpezaEntulho = limpezaEntulho
@@ -229,6 +254,7 @@ fun ServicoFormScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
+            versaoPreviewFotos++
             if (
                 ContextCompat.checkSelfPermission(
                     context,
@@ -306,18 +332,49 @@ fun ServicoFormScreen(
                 ordemServico = servico.ordemServico.toString().takeIf { it != "0" }.orEmpty()
                 numeroProtocolo = servico.numeroProtocolo
                 enderecoServico = servico.endereco
+
+                comprimento = if (servico.comprimento != 0.0) servico.comprimento.toString() else ""
+                largura = if (servico.largura != 0.0) servico.largura.toString() else ""
+                espessura = if (servico.altura != 0.0) {
+                    val valorCm = servico.altura * 100.0
+                    if (valorCm % 1.0 == 0.0) valorCm.toInt().toString() else valorCm.toString()
+                } else ""
+
                 fotoAntesUri = servico.fotoUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
-                fotoConclusaoUri = servico.fotoConclusaoUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+
+                // Se o seu ServicoEntity ainda não tiver esse campo, comente este bloco.
+                try {
+                    val campo = servico::class.java.getDeclaredField("fotoCavaAbertaUri")
+                    campo.isAccessible = true
+                    val valor = campo.get(servico) as? String
+                    fotoCavaAbertaUri = valor?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+                } catch (_: Exception) {
+                    // campo ainda não existe na entidade, segue sem quebrar a tela
+                }
+
+                fotoConclusaoUri = servico.fotoConclusaoUri
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { Uri.parse(it) }
+
                 latitudeAtual = servico.latitude
                 longitudeAtual = servico.longitude
 
-                comprimentoPersistido = servico.comprimento
-                larguraPersistida = servico.largura
-                alturaPersistida = servico.altura
-                inicioPersistido = servico.inicio
-                fimPersistido = servico.fim
-                aberturaCava = servico.aberturaCava
-                limpezaEntulho = servico.limpezaEntulho
+                // Se esses campos já existirem na entidade, serão carregados.
+                try {
+                    val campoAbertura = servico::class.java.getDeclaredField("aberturaCava")
+                    campoAbertura.isAccessible = true
+                    aberturaCava = campoAbertura.get(servico) as? String ?: ""
+                } catch (_: Exception) {
+                    aberturaCava = ""
+                }
+
+                try {
+                    val campoLimpeza = servico::class.java.getDeclaredField("limpezaEntulho")
+                    campoLimpeza.isAccessible = true
+                    limpezaEntulho = campoLimpeza.get(servico) as? String ?: ""
+                } catch (_: Exception) {
+                    limpezaEntulho = ""
+                }
             }
         }
     }
@@ -333,7 +390,7 @@ fun ServicoFormScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(if (servicoIdAtual == 0L) "Novo serviço" else "Editar serviço")
+                    Text(if (servicoIdAtual == 0L) "Cadastro de serviço" else "Editar serviço")
                 }
             )
         }
@@ -353,6 +410,8 @@ fun ServicoFormScreen(
 
             OutlinedButton(
                 onClick = {
+                    fotoEmCaptura = "ANTES"
+
                     if (
                         ContextCompat.checkSelfPermission(
                             context,
@@ -385,7 +444,7 @@ fun ServicoFormScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 AsyncImage(
-                    model = fotoAntesUri,
+                    model = fotoAntesUri?.let { "${it}#${versaoPreviewFotos}" },
                     contentDescription = "Foto antes do serviço",
                     modifier = Modifier
                         .fillMaxWidth()
@@ -410,7 +469,8 @@ fun ServicoFormScreen(
                 value = ordemServico,
                 onValueChange = { ordemServico = it.filter(Char::isDigit) },
                 label = { Text("Ordem de serviço") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -490,6 +550,138 @@ fun ServicoFormScreen(
                 }
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Foto da cava aberta",
+                style = MaterialTheme.typography.titleMedium
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = {
+                    fotoEmCaptura = "CAVA_ABERTA"
+
+                    if (
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.CAMERA
+                        ) == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        val novaUri = criarUriParaFoto(context)
+                        fotoCavaAbertaUri = novaUri
+
+                        if (
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.ACCESS_FINE_LOCATION
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            cameraLauncher.launch(novaUri)
+                        } else {
+                            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                        }
+                    } else {
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (fotoCavaAbertaUri == null) {
+                        "Capturar foto da cava aberta"
+                    } else {
+                        "Trocar foto da cava aberta"
+                    }
+                )
+            }
+
+            if (fotoCavaAbertaUri != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                AsyncImage(
+                    model = fotoCavaAbertaUri?.let { "${it}#${versaoPreviewFotos}" },
+                    contentDescription = "Foto da cava aberta",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clickable { mostrarFotoCavaAbertaAmpliada = true },
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Text(
+                text = "Dimensões da cava",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = comprimento,
+                onValueChange = {
+                    if (it.matches(regexDecimal)) comprimento = normalizarDecimal(it)
+                },
+                label = { Text("Comprimento (m)") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = {
+                        larguraFocusRequester.requestFocus()
+                    }
+                ),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = largura,
+                onValueChange = {
+                    if (it.matches(regexDecimal)) largura = normalizarDecimal(it)
+                },
+                label = { Text("Largura (m)") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(larguraFocusRequester),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = {
+                        espessuraFocusRequester.requestFocus()
+                    }
+                ),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = espessura,
+                onValueChange = {
+                    if (it.matches(regexDecimal)) espessura = normalizarDecimal(it)
+                },
+                label = { Text("Espessura (cm)") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(espessuraFocusRequester),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        keyboardController?.hide()
+                    }
+                ),
+                singleLine = true
+            )
+
             Spacer(modifier = Modifier.height(24.dp))
 
             Button(
@@ -514,6 +706,7 @@ fun ServicoFormScreen(
                 Text("Voltar")
             }
         }
+
         if (mostrarFotoAntesAmpliada && fotoAntesUri != null) {
             Dialog(
                 onDismissRequest = { mostrarFotoAntesAmpliada = false }
@@ -537,6 +730,38 @@ fun ServicoFormScreen(
 
                         Button(
                             onClick = { mostrarFotoAntesAmpliada = false },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Fechar")
+                        }
+                    }
+                }
+            }
+        }
+
+        if (mostrarFotoCavaAbertaAmpliada && fotoCavaAbertaUri != null) {
+            Dialog(
+                onDismissRequest = { mostrarFotoCavaAbertaAmpliada = false }
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        AsyncImage(
+                            model = fotoCavaAbertaUri,
+                            contentDescription = "Foto da cava aberta ampliada",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(500.dp),
+                            contentScale = ContentScale.Fit
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = { mostrarFotoCavaAbertaAmpliada = false },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Fechar")
