@@ -27,10 +27,7 @@ data class ObraEntity(
             childColumns = ["obraId"],
             onDelete = ForeignKey.CASCADE
         )
-    ],
-    //indices = [
-      //  Index(value = ["obraId", "data"], unique = true)
-    //]
+    ]
 )
 data class DiarioEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -44,9 +41,9 @@ data class DiarioEntity(
     // Etapa 2 - Equipamento
     val veiculo: String = "",
     val equipamentosAuxiliares: String = "",
+    val equipamentosCompactacao: String = "",
 
     // Etapa 3 - Carregamento / Abastecimento
-    // Mantidos por compatibilidade com a V1
     val localCarregamento: String = "",
     val pesoLiquidoTon: String = "",
     val fotoTicketUri: String = "",
@@ -164,7 +161,8 @@ data class DesvioItemEntity(
             childColumns = ["diarioId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [Index("diarioId")]
 )
 data class ServicoEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -173,21 +171,50 @@ data class ServicoEntity(
     val ordemServico: Int,
     val numeroProtocolo: String = "",
     val endereco: String = "",
-    val comprimento: Double,
-    val largura: Double,
-    val altura: Double,
+
+    val comprimento: Double = 0.0,
+    val largura: Double = 0.0,
+    val altura: Double = 0.0,
+
     val inicio: String? = null,
     val fim: String? = null,
+
     val latitude: Double? = null,
     val longitude: Double? = null,
     val nomeRua: String? = null,
+
     val fotoUri: String? = null,
     val fotoCavaAbertaUri: String? = null,
+    val fotoEspessuraUri: String? = null,
     val fotoConclusaoUri: String? = null,
+
     val sincronizado: Boolean = false,
     val aberturaCava: String = "",
     val limpezaEntulho: String = "",
-  )
+    val pinturaLigacao: Boolean = false,
+    val equipamentoCompactacaoUsado: String = ""
+)
+
+@Entity(
+    tableName = "servico_areas",
+    foreignKeys = [
+        ForeignKey(
+            entity = ServicoEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["servicoId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("servicoId")]
+)
+data class ServicoAreaEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val servicoId: Long,
+    val ordem: Int,
+    val comprimento: Double,
+    val largura: Double,
+    val espessuraCm: Double
+)
 
 @Entity(
     tableName = "subservicos",
@@ -237,15 +264,14 @@ data class DiarioCompleto(
     val servicos: List<ServicoEntity>
 )
 
-data class ServicoCompleto(
+data class ServicoComAreas(
     @Embedded val servico: ServicoEntity,
 
     @Relation(
-        entity = ServicoEntity::class,
         parentColumn = "id",
-        entityColumn = "diarioId"
+        entityColumn = "servicoId"
     )
-    val servicos: List<ServicoCompleto>
+    val areas: List<ServicoAreaEntity>
 )
 
 data class ServicoExportacao(
@@ -270,4 +296,3 @@ data class DiarioRelatorio(
     val desvios: List<DesvioItemEntity>,
     val servicos: List<ServicoExportacao>
 )
-

@@ -13,12 +13,12 @@ import androidx.room.RoomDatabase
         CarregamentoItemEntity::class,
         DesvioItemEntity::class,
         ServicoEntity::class,
+        ServicoAreaEntity::class,
         SubservicoEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
-
 abstract class AppDatabase : RoomDatabase() {
     abstract fun obrasDao(): ObrasDao
 

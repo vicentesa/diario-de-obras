@@ -10,7 +10,6 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,10 +18,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,19 +37,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.example.diarioobras.data.ServicoAreaEntity
 import com.example.diarioobras.data.ServicoEntity
 import com.example.diarioobras.ui.MainViewModel
 import com.google.android.gms.location.LocationServices
@@ -59,11 +67,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.input.ImeAction
 
 private val LISTA_ABERTURA_CAVA = listOf(
     "Já aberta",
@@ -92,6 +95,26 @@ private fun normalizarDecimal(valor: String): String {
     return valor.replace(",", ".")
 }
 
+private fun formatarDecimalTruncado(valor: Double): String {
+    val truncado = kotlin.math.floor(valor * 100.0) / 100.0
+    return String.format(Locale.US, "%.2f", truncado).replace(".", ",")
+}
+
+private fun formatarCampoDecimal(valor: String): String {
+    val numero = valor.replace(",", ".").toDoubleOrNull() ?: return valor
+    return formatarDecimalTruncado(numero)
+}
+
+data class AreaCavaUi(
+    val numero: Int,
+    val comprimento: Double,
+    val largura: Double,
+    val espessuraCm: Double
+) {
+    val area: Double
+        get() = comprimento * largura
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServicoFormScreen(
@@ -109,6 +132,10 @@ fun ServicoFormScreen(
         .servicosDoDiario(diarioId)
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
+    val diario by viewModel
+        .buscarDiarioFlow(diarioId)
+        .collectAsStateWithLifecycle(initialValue = null)
+
     var servicoIdAtual by remember { mutableLongStateOf(servicoId) }
 
     var ordemServico by remember { mutableStateOf("") }
@@ -123,7 +150,25 @@ fun ServicoFormScreen(
 
     var comprimento by remember { mutableStateOf("") }
     var largura by remember { mutableStateOf("") }
-    var espessura by remember { mutableStateOf("") }
+    var espessura by remember { mutableStateOf("5,00") }
+
+    var exibindoFormularioArea by remember { mutableStateOf(true) }
+
+    var pinturaLigacao by remember { mutableStateOf(false) }
+
+    val equipamentosCompactacao = remember(diario?.equipamentosCompactacao) {
+        diario?.equipamentosCompactacao
+            ?.split(" / ")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+    }
+
+    var menuEquipamentoCompactacaoExpandido by remember { mutableStateOf(false) }
+    var equipamentoCompactacaoSelecionado by remember { mutableStateOf("") }
+
+    var fotoEspessuraUri by remember { mutableStateOf<Uri?>(null) }
+    var mostrarFotoEspessuraAmpliada by remember { mutableStateOf(false) }
 
     val larguraFocusRequester = remember { FocusRequester() }
     val espessuraFocusRequester = remember { FocusRequester() }
@@ -139,10 +184,12 @@ fun ServicoFormScreen(
 
     var mostrarFotoAntesAmpliada by remember { mutableStateOf(false) }
     var mostrarFotoCavaAbertaAmpliada by remember { mutableStateOf(false) }
+    var mostrarFotoConclusaoAmpliada by remember { mutableStateOf(false) }
 
     var fotoEmCaptura by remember { mutableStateOf("ANTES") }
 
     val regexDecimal = Regex("^\\d*([.,]\\d*)?$")
+    val areasCava = remember { mutableStateListOf<AreaCavaUi>() }
 
     val preencherEnderecoPorCoordenada: (Double, Double) -> Unit = { latitude, longitude ->
         try {
@@ -214,40 +261,49 @@ fun ServicoFormScreen(
         return ServicoEntity(
             id = id,
             diarioId = diarioId,
+            tipo = "Tapa buraco",
             ordemServico = ordemServico.toIntOrNull() ?: 0,
             numeroProtocolo = numeroProtocolo,
             endereco = enderecoServico,
-            comprimento = comprimento.toDoubleOrNull() ?: 0.0,
-            largura = largura.toDoubleOrNull() ?: 0.0,
-            altura = (espessura.toDoubleOrNull() ?: 0.0) / 100.0,
+            comprimento = areasCava.lastOrNull()?.comprimento ?: 0.0,
+            largura = areasCava.lastOrNull()?.largura ?: 0.0,
+            altura = (areasCava.lastOrNull()?.espessuraCm ?: 0.0) / 100.0,
             inicio = null,
             fim = null,
             latitude = latitudeAtual,
             longitude = longitudeAtual,
             nomeRua = enderecoServico.ifBlank { null },
             fotoUri = fotoAntesUri?.toString(),
-
-            // Se o seu ServicoEntity já tiver esse campo, ele será salvo.
-            // Se ainda não tiver, apague esta linha por enquanto para compilar.
             fotoCavaAbertaUri = fotoCavaAbertaUri?.toString(),
-
+            fotoEspessuraUri = fotoEspessuraUri?.toString(),
             fotoConclusaoUri = fotoConclusaoUri?.toString(),
+            sincronizado = false,
             aberturaCava = aberturaCava,
-            limpezaEntulho = limpezaEntulho
+            limpezaEntulho = limpezaEntulho,
+            pinturaLigacao = pinturaLigacao,
+            equipamentoCompactacaoUsado = equipamentoCompactacaoSelecionado
         )
     }
 
-    suspend fun garantirServicoSalvo(): Long {
-        val entidade = montarServicoEntity(servicoIdAtual)
-
-        return if (servicoIdAtual == 0L) {
-            val novoId = viewModel.salvarServicoRetornandoId(entidade.copy(id = 0L))
-            servicoIdAtual = novoId
-            novoId
-        } else {
-            viewModel.atualizarServicoSuspend(entidade.copy(id = servicoIdAtual))
-            servicoIdAtual
+    fun montarAreasEntity(servicoId: Long): List<ServicoAreaEntity> {
+        return areasCava.mapIndexed { index, area ->
+            ServicoAreaEntity(
+                id = 0,
+                servicoId = servicoId,
+                ordem = index + 1,
+                comprimento = area.comprimento,
+                largura = area.largura,
+                espessuraCm = area.espessuraCm
+            )
         }
+    }
+
+    suspend fun salvarServicoCompletoTela(): Long {
+        val entidade = montarServicoEntity(servicoIdAtual)
+        val areas = montarAreasEntity(if (servicoIdAtual == 0L) 0L else servicoIdAtual)
+        val idSalvo = viewModel.salvarServicoCompleto(entidade, areas)
+        servicoIdAtual = idSalvo
+        return idSalvo
     }
 
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -294,6 +350,7 @@ fun ServicoFormScreen(
             when (fotoEmCaptura) {
                 "ANTES" -> fotoAntesUri?.let { cameraLauncher.launch(it) }
                 "CAVA_ABERTA" -> fotoCavaAbertaUri?.let { cameraLauncher.launch(it) }
+                "CAVA_ESPESSURA" -> fotoEspessuraUri?.let { cameraLauncher.launch(it) }
                 "CONCLUSAO" -> fotoConclusaoUri?.let { cameraLauncher.launch(it) }
             }
         }
@@ -308,6 +365,7 @@ fun ServicoFormScreen(
             when (fotoEmCaptura) {
                 "ANTES" -> fotoAntesUri = novaUri
                 "CAVA_ABERTA" -> fotoCavaAbertaUri = novaUri
+                "CAVA_ESPESSURA" -> fotoEspessuraUri = novaUri
                 "CONCLUSAO" -> fotoConclusaoUri = novaUri
             }
 
@@ -326,55 +384,43 @@ fun ServicoFormScreen(
 
     LaunchedEffect(servicoId) {
         if (servicoId != 0L) {
-            val servico = viewModel.buscarServicoPorId(servicoId)
+            val servicoComAreas = viewModel.buscarServicoComAreasPorId(servicoId)
+            val servico = servicoComAreas?.servico
+
             if (servico != null) {
                 servicoIdAtual = servico.id
                 ordemServico = servico.ordemServico.toString().takeIf { it != "0" }.orEmpty()
                 numeroProtocolo = servico.numeroProtocolo
                 enderecoServico = servico.endereco
 
-                comprimento = if (servico.comprimento != 0.0) servico.comprimento.toString() else ""
-                largura = if (servico.largura != 0.0) servico.largura.toString() else ""
-                espessura = if (servico.altura != 0.0) {
-                    val valorCm = servico.altura * 100.0
-                    if (valorCm % 1.0 == 0.0) valorCm.toInt().toString() else valorCm.toString()
-                } else ""
-
                 fotoAntesUri = servico.fotoUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
-
-                // Se o seu ServicoEntity ainda não tiver esse campo, comente este bloco.
-                try {
-                    val campo = servico::class.java.getDeclaredField("fotoCavaAbertaUri")
-                    campo.isAccessible = true
-                    val valor = campo.get(servico) as? String
-                    fotoCavaAbertaUri = valor?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
-                } catch (_: Exception) {
-                    // campo ainda não existe na entidade, segue sem quebrar a tela
-                }
-
-                fotoConclusaoUri = servico.fotoConclusaoUri
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { Uri.parse(it) }
+                fotoCavaAbertaUri = servico.fotoCavaAbertaUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+                fotoEspessuraUri = servico.fotoEspessuraUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+                fotoConclusaoUri = servico.fotoConclusaoUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
 
                 latitudeAtual = servico.latitude
                 longitudeAtual = servico.longitude
 
-                // Se esses campos já existirem na entidade, serão carregados.
-                try {
-                    val campoAbertura = servico::class.java.getDeclaredField("aberturaCava")
-                    campoAbertura.isAccessible = true
-                    aberturaCava = campoAbertura.get(servico) as? String ?: ""
-                } catch (_: Exception) {
-                    aberturaCava = ""
-                }
+                aberturaCava = servico.aberturaCava
+                limpezaEntulho = servico.limpezaEntulho
+                pinturaLigacao = servico.pinturaLigacao
+                equipamentoCompactacaoSelecionado = servico.equipamentoCompactacaoUsado
 
-                try {
-                    val campoLimpeza = servico::class.java.getDeclaredField("limpezaEntulho")
-                    campoLimpeza.isAccessible = true
-                    limpezaEntulho = campoLimpeza.get(servico) as? String ?: ""
-                } catch (_: Exception) {
-                    limpezaEntulho = ""
-                }
+                areasCava.clear()
+                servicoComAreas.areas
+                    .sortedBy { it.ordem }
+                    .forEach { area ->
+                        areasCava.add(
+                            AreaCavaUi(
+                                numero = area.ordem,
+                                comprimento = area.comprimento,
+                                largura = area.largura,
+                                espessuraCm = area.espessuraCm
+                            )
+                        )
+                    }
+
+                exibindoFormularioArea = areasCava.isEmpty()
             }
         }
     }
@@ -383,6 +429,15 @@ fun ServicoFormScreen(
         if (servicoIdAtual == 0L && numeroProtocolo.isBlank()) {
             val proximo = (servicosDoDiario.maxOfOrNull { it.ordemServico } ?: 0) + 1
             numeroProtocolo = proximo.toString()
+            ordemServico = proximo.toString()
+        }
+    }
+
+    LaunchedEffect(equipamentosCompactacao) {
+        if (equipamentosCompactacao.size == 1 && equipamentoCompactacaoSelecionado.isBlank()) {
+            equipamentoCompactacaoSelecionado = equipamentosCompactacao.first()
+        } else if (equipamentosCompactacao.isEmpty()) {
+            equipamentoCompactacaoSelecionado = ""
         }
     }
 
@@ -611,83 +666,382 @@ fun ServicoFormScreen(
                 )
             }
 
+            Spacer(modifier = Modifier.height(12.dp))
+
             Text(
                 text = "Dimensões da cava",
                 style = MaterialTheme.typography.titleMedium
             )
-            Spacer(modifier = Modifier.height(8.dp))
 
-            OutlinedTextField(
-                value = comprimento,
-                onValueChange = {
-                    if (it.matches(regexDecimal)) comprimento = normalizarDecimal(it)
-                },
-                label = { Text("Comprimento (m)") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(
-                    onNext = {
-                        larguraFocusRequester.requestFocus()
+            Spacer(modifier = Modifier.height(4.dp))
+
+            if (exibindoFormularioArea) {
+                Text(
+                    text = "A${areasCava.size + 1}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = comprimento,
+                    onValueChange = {
+                        if (it.matches(regexDecimal)) comprimento = normalizarDecimal(it)
+                    },
+                    label = { Text("Comprimento (m)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = {
+                            comprimento = formatarCampoDecimal(comprimento)
+                            larguraFocusRequester.requestFocus()
+                        }
+                    ),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = largura,
+                    onValueChange = {
+                        if (it.matches(regexDecimal)) largura = normalizarDecimal(it)
+                    },
+                    label = { Text("Largura (m)") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(larguraFocusRequester),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = {
+                            largura = formatarCampoDecimal(largura)
+                            espessuraFocusRequester.requestFocus()
+                        }
+                    ),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = espessura,
+                    onValueChange = {
+                        if (it.matches(regexDecimal)) espessura = normalizarDecimal(it)
+                    },
+                    label = { Text("Espessura (cm)") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(espessuraFocusRequester),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            comprimento = formatarCampoDecimal(comprimento)
+                            largura = formatarCampoDecimal(largura)
+                            espessura = formatarCampoDecimal(espessura)
+
+                            val comp = comprimento.replace(",", ".").toDoubleOrNull()
+                            val larg = largura.replace(",", ".").toDoubleOrNull()
+                            val esp = espessura.replace(",", ".").toDoubleOrNull()
+
+                            if (comp != null && larg != null && esp != null) {
+                                areasCava.add(
+                                    AreaCavaUi(
+                                        numero = areasCava.size + 1,
+                                        comprimento = comp,
+                                        largura = larg,
+                                        espessuraCm = esp
+                                    )
+                                )
+
+                                comprimento = ""
+                                largura = ""
+                                espessura = "5,00"
+                                exibindoFormularioArea = false
+                            }
+
+                            keyboardController?.hide()
+                        }
+                    ),
+                    singleLine = true
+                )
+            }
+
+            val areaTotalAcumulada = areasCava.sumOf { it.area }
+
+            if (areasCava.isNotEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Text(
+                            text = "ÁREA TOTAL",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Text(
+                            text = formatarDecimalTruncado(areaTotalAcumulada),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
-                ),
-                singleLine = true
+                }
+            }
+
+            areasCava.forEach { area ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Text(
+                            text = "Área ${area.numero}",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Text(
+                            text = "C x L x E: ${formatarDecimalTruncado(area.comprimento)} x ${formatarDecimalTruncado(area.largura)} x ${formatarDecimalTruncado(area.espessuraCm)} cm",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Text(
+                            text = "Área total: ${formatarDecimalTruncado(area.area)}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+
+            if (!exibindoFormularioArea) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        exibindoFormularioArea = true
+                        comprimento = ""
+                        largura = ""
+                        espessura = "5,00"
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("+")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Foto da espessura (opcional)",
+                style = MaterialTheme.typography.titleMedium
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            OutlinedTextField(
-                value = largura,
-                onValueChange = {
-                    if (it.matches(regexDecimal)) largura = normalizarDecimal(it)
+            OutlinedButton(
+                onClick = {
+                    fotoEmCaptura = "CAVA_ESPESSURA"
+
+                    if (
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.CAMERA
+                        ) == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        val novaUri = criarUriParaFoto(context)
+                        fotoEspessuraUri = novaUri
+
+                        if (
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.ACCESS_FINE_LOCATION
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            cameraLauncher.launch(novaUri)
+                        } else {
+                            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                        }
+                    } else {
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
                 },
-                label = { Text("Largura (m)") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (fotoEspessuraUri == null) {
+                        "Capturar foto da espessura"
+                    } else {
+                        "Trocar foto da espessura"
+                    }
+                )
+            }
+
+            if (fotoEspessuraUri != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                AsyncImage(
+                    model = fotoEspessuraUri?.let { "${it}#${versaoPreviewFotos}" },
+                    contentDescription = "Foto da espessura",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clickable { mostrarFotoEspessuraAmpliada = true },
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .focusRequester(larguraFocusRequester),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(
-                    onNext = {
-                        espessuraFocusRequester.requestFocus()
+                    .clickable { pinturaLigacao = !pinturaLigacao },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = pinturaLigacao,
+                    onCheckedChange = { checked ->
+                        pinturaLigacao = checked
                     }
-                ),
-                singleLine = true
+                )
+
+                Text(
+                    text = "Pintura de Ligação",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            if (equipamentosCompactacao.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Equipamento de compactação usado",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        if (equipamentosCompactacao.size > 1) {
+                            menuEquipamentoCompactacaoExpandido = true
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        when {
+                            equipamentoCompactacaoSelecionado.isNotBlank() -> equipamentoCompactacaoSelecionado
+                            equipamentosCompactacao.size == 1 -> equipamentosCompactacao.first()
+                            else -> "Selecionar equipamento"
+                        }
+                    )
+                }
+
+                if (equipamentosCompactacao.size > 1) {
+                    DropdownMenu(
+                        expanded = menuEquipamentoCompactacaoExpandido,
+                        onDismissRequest = { menuEquipamentoCompactacaoExpandido = false }
+                    ) {
+                        equipamentosCompactacao.forEach { equipamento ->
+                            DropdownMenuItem(
+                                text = { Text(equipamento) },
+                                onClick = {
+                                    equipamentoCompactacaoSelecionado = equipamento
+                                    menuEquipamentoCompactacaoExpandido = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Foto do serviço finalizado",
+                style = MaterialTheme.typography.titleMedium
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            OutlinedTextField(
-                value = espessura,
-                onValueChange = {
-                    if (it.matches(regexDecimal)) espessura = normalizarDecimal(it)
-                },
-                label = { Text("Espessura (cm)") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(espessuraFocusRequester),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        keyboardController?.hide()
+            OutlinedButton(
+                onClick = {
+                    fotoEmCaptura = "CONCLUSAO"
+
+                    if (
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.CAMERA
+                        ) == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        val novaUri = criarUriParaFoto(context)
+                        fotoConclusaoUri = novaUri
+
+                        if (
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.ACCESS_FINE_LOCATION
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            cameraLauncher.launch(novaUri)
+                        } else {
+                            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                        }
+                    } else {
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     }
-                ),
-                singleLine = true
-            )
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (fotoConclusaoUri == null) {
+                        "Capturar foto do serviço finalizado"
+                    } else {
+                        "Trocar foto do serviço finalizado"
+                    }
+                )
+            }
+
+            if (fotoConclusaoUri != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                AsyncImage(
+                    model = fotoConclusaoUri?.let { "${it}#${versaoPreviewFotos}" },
+                    contentDescription = "Foto do serviço finalizado",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clickable { mostrarFotoConclusaoAmpliada = true },
+                    contentScale = ContentScale.Crop
+                )
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             Button(
                 onClick = {
                     scope.launch {
-                        garantirServicoSalvo()
+                        salvarServicoCompletoTela()
                         onSalvarConcluir()
                     }
                 },
@@ -762,6 +1116,70 @@ fun ServicoFormScreen(
 
                         Button(
                             onClick = { mostrarFotoCavaAbertaAmpliada = false },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Fechar")
+                        }
+                    }
+                }
+            }
+        }
+
+        if (mostrarFotoEspessuraAmpliada && fotoEspessuraUri != null) {
+            Dialog(
+                onDismissRequest = { mostrarFotoEspessuraAmpliada = false }
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        AsyncImage(
+                            model = fotoEspessuraUri,
+                            contentDescription = "Foto da espessura ampliada",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(500.dp),
+                            contentScale = ContentScale.Fit
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = { mostrarFotoEspessuraAmpliada = false },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Fechar")
+                        }
+                    }
+                }
+            }
+        }
+
+        if (mostrarFotoConclusaoAmpliada && fotoConclusaoUri != null) {
+            Dialog(
+                onDismissRequest = { mostrarFotoConclusaoAmpliada = false }
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        AsyncImage(
+                            model = fotoConclusaoUri,
+                            contentDescription = "Foto do serviço finalizado ampliada",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(500.dp),
+                            contentScale = ContentScale.Fit
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = { mostrarFotoConclusaoAmpliada = false },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Fechar")

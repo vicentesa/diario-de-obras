@@ -1,8 +1,12 @@
 package com.example.diarioobras.data
 
-import androidx.room.*
-import kotlinx.coroutines.flow.Flow
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ObrasDao {
@@ -29,6 +33,12 @@ interface ObrasDao {
     @Query("SELECT * FROM diarios WHERE id = :diarioId LIMIT 1")
     suspend fun buscarDiarioCompletoPorId(diarioId: Long): DiarioCompleto?
 
+    @Query("SELECT * FROM diarios WHERE id = :diarioId LIMIT 1")
+    fun buscarDiarioFlowPorId(diarioId: Long): Flow<DiarioEntity?>
+
+    @Update
+    suspend fun atualizarDiario(diario: DiarioEntity)
+
     @Insert
     suspend fun inserirDeslocamentos(itens: List<DeslocamentoItemEntity>)
 
@@ -54,15 +64,6 @@ interface ObrasDao {
     suspend fun excluirCarregamento(item: CarregamentoItemEntity)
 
     @Insert
-    suspend fun inserirServico(servico: ServicoEntity): Long
-
-    @Query("SELECT * FROM servicos WHERE diarioId = :diarioId ORDER BY ordemServico ASC")
-    fun listarServicos(diarioId: Long): Flow<List<ServicoEntity>>
-
-    @Update
-    suspend fun atualizarDiario(diario: DiarioEntity)
-
-    @Insert
     suspend fun inserirDesvio(item: DesvioItemEntity)
 
     @Query("SELECT * FROM desvios WHERE diarioId = :diarioId ORDER BY id ASC")
@@ -71,14 +72,21 @@ interface ObrasDao {
     @Update
     suspend fun atualizarDesvio(item: DesvioItemEntity)
 
-    @Query("SELECT * FROM diarios WHERE obraId = :obraId AND data = :data LIMIT 1")
-    suspend fun buscarDiarioPorObraEData(obraId: Long, data: String): DiarioEntity?
+    @Insert
+    suspend fun inserirServico(servico: ServicoEntity): Long
 
     @Update
     suspend fun atualizarServico(servico: ServicoEntity)
 
+    @Query("SELECT * FROM servicos WHERE diarioId = :diarioId ORDER BY ordemServico ASC")
+    fun listarServicos(diarioId: Long): Flow<List<ServicoEntity>>
+
     @Query("SELECT * FROM servicos WHERE id = :servicoId LIMIT 1")
     suspend fun buscarServicoPorId(servicoId: Long): ServicoEntity?
+
+    @Transaction
+    @Query("SELECT * FROM servicos WHERE id = :servicoId LIMIT 1")
+    suspend fun buscarServicoComAreasPorId(servicoId: Long): ServicoComAreas?
 
     @Insert
     suspend fun inserirSubservico(subservico: SubservicoEntity)
@@ -92,7 +100,32 @@ interface ObrasDao {
     @Update
     suspend fun atualizarSubservico(subservico: SubservicoEntity)
 
-    @Query("""
+    @Insert
+    suspend fun inserirServicoAreas(itens: List<ServicoAreaEntity>)
+
+    @Insert
+    suspend fun inserirServicoArea(item: ServicoAreaEntity): Long
+
+    @Query("SELECT * FROM servico_areas WHERE servicoId = :servicoId ORDER BY ordem ASC, id ASC")
+    fun listarServicoAreas(servicoId: Long): Flow<List<ServicoAreaEntity>>
+
+    @Query("SELECT * FROM servico_areas WHERE servicoId = :servicoId ORDER BY ordem ASC, id ASC")
+    suspend fun listarServicoAreasDireto(servicoId: Long): List<ServicoAreaEntity>
+
+    @Query("DELETE FROM servico_areas WHERE servicoId = :servicoId")
+    suspend fun excluirServicoAreasPorServicoId(servicoId: Long)
+
+    @Update
+    suspend fun atualizarServicoArea(item: ServicoAreaEntity)
+
+    @Delete
+    suspend fun excluirServicoArea(item: ServicoAreaEntity)
+
+    @Query("SELECT * FROM diarios WHERE obraId = :obraId AND data = :data LIMIT 1")
+    suspend fun buscarDiarioPorObraEData(obraId: Long, data: String): DiarioEntity?
+
+    @Query(
+        """
         UPDATE diarios SET
             etapaAtual = :etapaAtual,
             statusEquipe = :statusEquipe,
@@ -104,7 +137,8 @@ interface ObrasDao {
             statusFechamentoDo = :statusFechamentoDo,
             diarioFechado = :diarioFechado
         WHERE id = :diarioId
-    """)
+        """
+    )
     suspend fun atualizarStatusEtapasDiario(
         diarioId: Long,
         etapaAtual: Int,
@@ -117,7 +151,9 @@ interface ObrasDao {
         statusFechamentoDo: String,
         diarioFechado: Boolean
     )
-    @Query("""
+
+    @Query(
+        """
         UPDATE diarios SET
             inicioIntervalo = :inicioIntervalo,
             fimIntervalo = :fimIntervalo,
@@ -127,7 +163,8 @@ interface ObrasDao {
             observacaoFechamentoServicos = :observacaoFechamentoServicos,
             fechamentoServicosConcluido = :fechamentoServicosConcluido
         WHERE id = :diarioId
-    """)
+        """
+    )
     suspend fun atualizarIntervaloEFechamentoServicos(
         diarioId: Long,
         inicioIntervalo: String?,
@@ -139,7 +176,8 @@ interface ObrasDao {
         fechamentoServicosConcluido: Boolean
     )
 
-    @Query("""
+    @Query(
+        """
         UPDATE diarios SET
             saidaRetornoBase = :saidaRetornoBase,
             chegadaBase = :chegadaBase,
@@ -148,7 +186,8 @@ interface ObrasDao {
             observacaoFinalDo = :observacaoFinalDo,
             diarioFechado = :diarioFechado
         WHERE id = :diarioId
-    """)
+        """
+    )
     suspend fun atualizarRetornoEFechamentoDo(
         diarioId: Long,
         saidaRetornoBase: String?,

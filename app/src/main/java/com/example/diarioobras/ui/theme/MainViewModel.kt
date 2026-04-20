@@ -1,30 +1,32 @@
 package com.example.diarioobras.ui
 
 import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
-import com.example.diarioobras.data.AppDatabase
-import com.example.diarioobras.data.DeslocamentoItemEntity
-import com.example.diarioobras.data.DiarioEntity
-import com.example.diarioobras.data.ObraEntity
-import com.example.diarioobras.data.ServicoEntity
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import com.example.diarioobras.data.DesvioItemEntity
-import com.example.diarioobras.data.SubservicoEntity
-import com.example.diarioobras.data.DiarioCompleto
-import com.example.diarioobras.data.ServicoExportacao
-import com.example.diarioobras.data.DiarioExportacao
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
-import java.io.File
-import com.example.diarioobras.data.DiarioRelatorio
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.diarioobras.data.AppDatabase
 import com.example.diarioobras.data.CarregamentoItemEntity
+import com.example.diarioobras.data.DeslocamentoItemEntity
+import com.example.diarioobras.data.DesvioItemEntity
+import com.example.diarioobras.data.DiarioCompleto
+import com.example.diarioobras.data.DiarioEntity
+import com.example.diarioobras.data.DiarioExportacao
+import com.example.diarioobras.data.DiarioRelatorio
+import com.example.diarioobras.data.ObraEntity
+import com.example.diarioobras.data.ServicoAreaEntity
+import com.example.diarioobras.data.ServicoComAreas
+import com.example.diarioobras.data.ServicoEntity
+import com.example.diarioobras.data.ServicoExportacao
+import com.example.diarioobras.data.SubservicoEntity
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -36,6 +38,72 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun buscarDiarioCompleto(diarioId: Long): DiarioCompleto? {
         return dao.buscarDiarioCompletoPorId(diarioId)
+    }
+
+    suspend fun buscarServicoComAreasPorId(servicoId: Long): ServicoComAreas? {
+        return dao.buscarServicoComAreasPorId(servicoId)
+    }
+
+    suspend fun listarServicoAreasDireto(servicoId: Long): List<ServicoAreaEntity> {
+        return dao.listarServicoAreasDireto(servicoId)
+    }
+
+    fun servicoAreasDoServico(servicoId: Long) =
+        dao.listarServicoAreas(servicoId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    suspend fun substituirAreasDoServico(
+        servicoId: Long,
+        areas: List<ServicoAreaEntity>
+    ) {
+        dao.excluirServicoAreasPorServicoId(servicoId)
+
+        if (areas.isNotEmpty()) {
+            dao.inserirServicoAreas(
+                areas.mapIndexed { index, area ->
+                    area.copy(
+                        id = 0,
+                        servicoId = servicoId,
+                        ordem = index + 1
+                    )
+                }
+            )
+        }
+    }
+
+    suspend fun salvarServicoCompleto(
+        servico: ServicoEntity,
+        areas: List<ServicoAreaEntity>
+    ): Long {
+        val servicoId = if (servico.id == 0L) {
+            dao.inserirServico(servico.copy(id = 0))
+        } else {
+            dao.atualizarServico(servico)
+            servico.id
+        }
+
+        substituirAreasDoServico(
+            servicoId = servicoId,
+            areas = areas.map { it.copy(servicoId = servicoId) }
+        )
+
+        val diarioAtual = dao.buscarDiarioPorId(servico.diarioId)
+        if (diarioAtual != null && diarioAtual.statusServicos != "CONCLUIDA") {
+            dao.atualizarStatusEtapasDiario(
+                diarioId = servico.diarioId,
+                etapaAtual = 4,
+                statusEquipe = diarioAtual.statusEquipe,
+                statusEquipamento = diarioAtual.statusEquipamento,
+                statusCarregamento = diarioAtual.statusCarregamento,
+                statusServicos = "EM_ANDAMENTO",
+                statusFechamentoServicos = "DISPONIVEL",
+                statusRetornoBase = diarioAtual.statusRetornoBase,
+                statusFechamentoDo = diarioAtual.statusFechamentoDo,
+                diarioFechado = diarioAtual.diarioFechado
+            )
+        }
+
+        return servicoId
     }
 
     suspend fun montarServicosParaExportacao(diarioId: Long): List<ServicoExportacao> {
@@ -79,6 +147,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             servicos = servicos
         )
     }
+
     suspend fun gerarCsvDiarioPorId(diarioId: Long): String? {
         val diarioExportacao = montarDiarioParaExportacao(diarioId) ?: return null
         return gerarCsvDiario(diarioExportacao)
@@ -101,6 +170,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             arquivo
         )
     }
+
     suspend fun salvarCsvDiarioNoApp(context: Context, diarioId: Long): String? {
         val diarioExportacao = montarDiarioParaExportacao(diarioId) ?: return null
         val nomeArquivo = gerarNomeArquivoCsv(diarioExportacao)
@@ -112,6 +182,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         return nomeArquivo
     }
+
     val obras = dao.listarObras()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -155,7 +226,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun atualizarEquipamentoDiario(
         diarioId: Long,
         veiculo: String,
-        equipamentosAuxiliares: List<String>
+        equipamentosAuxiliares: List<String>,
+        equipamentosCompactacao: List<String>
     ) {
         viewModelScope.launch {
             val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
@@ -163,7 +235,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             dao.atualizarDiario(
                 diarioAtual.copy(
                     veiculo = veiculo,
-                    equipamentosAuxiliares = equipamentosAuxiliares.joinToString(" / ")
+                    equipamentosAuxiliares = equipamentosAuxiliares.joinToString(" / "),
+                    equipamentosCompactacao = equipamentosCompactacao.joinToString(" / ")
                 )
             )
 
@@ -227,11 +300,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
     }
+
     fun excluirCarregamento(item: CarregamentoItemEntity) {
         viewModelScope.launch {
             dao.excluirCarregamento(item)
         }
     }
+
     fun servicosDoDiario(diarioId: Long) =
         dao.listarServicos(diarioId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -266,12 +341,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch {
             val dataHoje = dataAtual()
-            //val diarioExistente = dao.buscarDiarioPorObraEData(obraId, dataHoje)
-
-            //if (diarioExistente != null) {
-              //  onJaExiste("O diário do dia $dataHoje já existe.")
-                //return@launch
-            //}
 
             val diarioId = dao.inserirDiario(
                 DiarioEntity(
@@ -280,33 +349,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             )
 
-            val etapas = listOf(
-                "Batendo ponto de entrada",
-                "Organizando materiais e ferramentas para o trabalho (Manhã)",
-                "A caminho da Usina",
-                "Chegada na Usina",
-                "Carregando asfalto",
-                "Término do carregamento",
-                "Pesagem do caminhão carregado",
-                "Saída da Usina para o trecho",
-                "Chegada no trecho",
-                "Saída do trecho para o almoço",
-                "Intervalo/Almoço",
-                "Retorno do Almoço para o trecho",
-                "Chegada no trecho",
-                "Retorno para a base",
-                "Organizando materiais e ferramentas para o trabalho (Tarde)",
-                "Batendo o ponto de saída"
-            )
-
             dao.inserirDeslocamentos(
-                etapas.mapIndexed { index, titulo ->
+                listOf(
                     DeslocamentoItemEntity(
                         diarioId = diarioId,
-                        ordem = index,
-                        titulo = titulo
+                        ordem = 1,
+                        titulo = "Batendo ponto na entrada"
+                    ),
+                    DeslocamentoItemEntity(
+                        diarioId = diarioId,
+                        ordem = 2,
+                        titulo = "Organizando materiais e ferramentas para o trabalho (Manhã)"
+                    ),
+                    DeslocamentoItemEntity(
+                        diarioId = diarioId,
+                        ordem = 3,
+                        titulo = "A caminho da Usina"
+                    ),
+                    DeslocamentoItemEntity(
+                        diarioId = diarioId,
+                        ordem = 4,
+                        titulo = "Chegada na Usina"
+                    ),
+                    DeslocamentoItemEntity(
+                        diarioId = diarioId,
+                        ordem = 5,
+                        titulo = "Carregando asfalto"
+                    ),
+                    DeslocamentoItemEntity(
+                        diarioId = diarioId,
+                        ordem = 6,
+                        titulo = "Término do carregamento"
+                    ),
+                    DeslocamentoItemEntity(
+                        diarioId = diarioId,
+                        ordem = 7,
+                        titulo = "Pesagem do caminhão carregado"
+                    ),
+                    DeslocamentoItemEntity(
+                        diarioId = diarioId,
+                        ordem = 8,
+                        titulo = "Saída da Usina para o trecho"
+                    ),
+                    DeslocamentoItemEntity(
+                        diarioId = diarioId,
+                        ordem = 9,
+                        titulo = "Chegada no trecho"
                     )
-                }
+                )
             )
 
             onCriado(diarioId)
@@ -694,6 +784,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return "\"$escapado\""
     }
 
+    fun buscarDiarioFlow(diarioId: Long) = dao.buscarDiarioFlowPorId(diarioId)
+
     fun gerarCsvDiario(diario: DiarioExportacao): String {
         val sb = StringBuilder()
 
@@ -829,5 +921,4 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val relatorio = montarDiarioParaRelatorio(diarioId) ?: return null
         return gerarTextoRelatorio(relatorio)
     }
-
 }

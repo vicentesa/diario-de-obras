@@ -1,13 +1,17 @@
 package com.example.diarioobras.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.location.Location
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -22,30 +26,23 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.*
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.diarioobras.data.DiarioEntity
 import com.example.diarioobras.data.ObraEntity
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import android.content.Context
-import androidx.core.content.FileProvider
-import java.io.File
-import java.util.UUID
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.runtime.snapshots.SnapshotStateList
-import android.location.Geocoder
-import android.location.Location
 import com.google.android.gms.location.LocationServices
+import java.io.File
 import java.util.Locale
+import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,15 +52,22 @@ fun DiarioEtapasScreen(
     onAbrirServico: (Long) -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
-    var diario by remember { mutableStateOf<DiarioEntity?>(null) }
     var obra by remember { mutableStateOf<ObraEntity?>(null) }
-    var etapaExpandida by remember { mutableStateOf(1) }
+    var etapaExpandida by remember(diarioId) { mutableStateOf(1) }
+    var dadosLocaisInicializados by remember(diarioId) { mutableStateOf(false) }
 
-    val servicos by viewModel.servicosDoDiario(diarioId).collectAsStateWithLifecycle()
-    val desvios by viewModel.desviosDoDiario(diarioId).collectAsStateWithLifecycle()
-    val deslocamentos by viewModel.deslocamentosDoDiario(diarioId).collectAsStateWithLifecycle()
+    val diarioFlow = remember(diarioId) { viewModel.buscarDiarioFlow(diarioId) }
+    val servicosFlow = remember(diarioId) { viewModel.servicosDoDiario(diarioId) }
+    val desviosFlow = remember(diarioId) { viewModel.desviosDoDiario(diarioId) }
+    val deslocamentosFlow = remember(diarioId) { viewModel.deslocamentosDoDiario(diarioId) }
+    val carregamentosFlow = remember(diarioId) { viewModel.carregamentosDoDiario(diarioId) }
+
+    val diario by diarioFlow.collectAsStateWithLifecycle(initialValue = null)
+    val servicos by servicosFlow.collectAsStateWithLifecycle()
+    val desvios by desviosFlow.collectAsStateWithLifecycle()
+    val deslocamentos by deslocamentosFlow.collectAsStateWithLifecycle()
+    val carregamentos by carregamentosFlow.collectAsStateWithLifecycle()
 
     var desviosExpandido by remember { mutableStateOf(false) }
 
@@ -90,9 +94,9 @@ fun DiarioEtapasScreen(
     val quantidadesEtapa3 = remember(diarioId) { mutableStateListOf<String>() }
     var fotoTicketEtapa3Uri by remember(diarioId) { mutableStateOf<Uri?>(null) }
     var mostrarTicketAmpliado by remember { mutableStateOf(false) }
+    var versaoPreviewTicket by remember(diarioId) { mutableStateOf(0) }
 
     // Etapa 4
-
     var exibindoCadastroServico by remember(diarioId) { mutableStateOf(false) }
     var descricaoServicoEtapa4 by remember(diarioId) { mutableStateOf("") }
 
@@ -112,18 +116,74 @@ fun DiarioEtapasScreen(
     var longitudeServico by remember { mutableStateOf<Double?>(null) }
     var enderecoServico by remember { mutableStateOf("") }
 
-    val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+    val fusedLocationClient = remember(context) {
+        LocationServices.getFusedLocationProviderClient(context)
+    }
+
+    LaunchedEffect(diario?.obraId) {
+        val obraId = diario?.obraId ?: return@LaunchedEffect
+        obra = viewModel.buscarObraPorId(obraId)
+    }
+
+    LaunchedEffect(diario?.id) {
+        val diarioAtual = diario ?: return@LaunchedEffect
+        if (dadosLocaisInicializados) return@LaunchedEffect
+
+        etapaExpandida = diarioAtual.etapaAtual
+
+        // Etapa 1
+        encarregadoSelecionado = diarioAtual.encarregado
+        equipeSelecionada = diarioAtual.equipe
+            .split(" / ")
+            .filter { nome -> nome.isNotBlank() }
+            .toSet()
+
+        // Etapa 2
+        veiculosSelecionados = diarioAtual.veiculo
+            .split(" / ")
+            .filter { nome -> nome.isNotBlank() }
+            .toSet()
+
+        equipamentosCompactacaoSelecionados = diarioAtual.equipamentosCompactacao
+            .split(" / ")
+            .filter { nome -> nome.isNotBlank() }
+            .toSet()
+
+        equipamentosSelecionados = diarioAtual.equipamentosAuxiliares
+            .split(" / ")
+            .filter { nome -> nome.isNotBlank() }
+            .toSet()
+
+        // Etapa 3
+        if (veiculoEtapa3Selecionado.isBlank()) {
+            val veiculos = diarioAtual.veiculo
+                .split(" / ")
+                .filter { nome -> nome.isNotBlank() }
+
+            veiculoEtapa3Selecionado =
+                if (veiculos.size == 1) veiculos.first() else ""
+        }
+
+        fotoTicketEtapa3Uri =
+            if (diarioAtual.fotoTicketUri.isNotBlank()) Uri.parse(diarioAtual.fotoTicketUri) else null
+
+        dadosLocaisInicializados = true
+    }
+
+    LaunchedEffect(diario?.etapaAtual) {
+        val etapaAtualBanco = diario?.etapaAtual ?: return@LaunchedEffect
+        if (etapaAtualBanco > etapaExpandida) {
+            etapaExpandida = etapaAtualBanco
+        }
+    }
 
     val cameraServicoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
-
             fusedLocationClient.lastLocation
                 .addOnSuccessListener { location: Location? ->
-
                     if (location != null) {
-
                         latitudeServico = location.latitude
                         longitudeServico = location.longitude
 
@@ -140,11 +200,9 @@ fun DiarioEtapasScreen(
                                 val enderecoCompleto = lista[0].getAddressLine(0)
                                 endereco = enderecoCompleto ?: ""
                             }
-
-                        } catch (e: Exception) {
+                        } catch (_: Exception) {
                             endereco = "Endereço não encontrado"
                         }
-
                     } else {
                         endereco = "Localização indisponível"
                     }
@@ -162,9 +220,31 @@ fun DiarioEtapasScreen(
         }
     }
 
-    val deslocamentosEtapa1 = deslocamentos.filter {
-        it.titulo.equals("Batendo ponto de entrada", ignoreCase = true) ||
-                it.titulo.equals("Batendo ponto na entrada", ignoreCase = true)
+    val ticketCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            versaoPreviewTicket++
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val novaUri = criarUriParaFotoEtapa(context)
+            fotoTicketEtapa3Uri = novaUri
+            ticketCameraLauncher.launch(novaUri)
+        }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    val deslocamentosEtapa1 = deslocamentos.filter { item ->
+        val titulo = item.titulo.trim().lowercase()
+        titulo.contains("batendo ponto") && titulo.contains("entrada")
     }
 
     val deslocamentosEtapa2 = deslocamentos.filter {
@@ -186,7 +266,6 @@ fun DiarioEtapasScreen(
         it.titulo.equals("Término do carregamento", ignoreCase = true)
     }
 
-
     val veiculosDisponiveisEtapa3 = diario?.veiculo
         ?.split(" / ")
         ?.filter { it.isNotBlank() }
@@ -197,7 +276,6 @@ fun DiarioEtapasScreen(
         ?.filter { it.isNotBlank() }
         ?: emptyList()
 
-
     LaunchedEffect(veiculosEtapa3.size) {
         if (veiculosEtapa3.isNotEmpty() && quantidadesEtapa3.size != veiculosEtapa3.size) {
             quantidadesEtapa3.clear()
@@ -207,33 +285,6 @@ fun DiarioEtapasScreen(
         }
     }
 
-    val ticketCameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success) {
-            // Neste momento a miniatura já aparece.
-            // A persistência detalhada do carregamento por veículo virá no próximo passo.
-        }
-    }
-
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            val novaUri = criarUriParaFotoEtapa(context)
-            fotoTicketEtapa3Uri = novaUri
-            ticketCameraLauncher.launch(novaUri)
-        }
-    }
-
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        // por enquanto não precisamos fazer nada aqui
-    }
-
-    val carregamentos by viewModel.carregamentosDoDiario(diarioId).collectAsStateWithLifecycle()
-
     val veiculosJaCarregados = remember(carregamentos) {
         carregamentos
             .map { it.veiculo }
@@ -242,8 +293,7 @@ fun DiarioEtapasScreen(
     }
 
     val veiculosPendentesEtapa3 = remember(veiculosDisponiveisEtapa3, veiculosJaCarregados) {
-        veiculosDisponiveisEtapa3
-            .filter { !veiculosJaCarregados.contains(it) }
+        veiculosDisponiveisEtapa3.filter { !veiculosJaCarregados.contains(it) }
     }
 
     val deslocamentoPesagemCarregado = deslocamentos.filter {
@@ -254,7 +304,9 @@ fun DiarioEtapasScreen(
         it.titulo.equals("Saída da Usina para o trecho", ignoreCase = true)
     }
 
-    val deslocamentoChegadaTrechoEtapa4 = deslocamentoSaidaUsinaTrecho
+    val deslocamentoChegadaTrechoEtapa4 = deslocamentos.filter {
+        it.titulo.equals("Chegada no trecho", ignoreCase = true)
+    }
 
     val quantidadesPorVeiculoEtapa3 = remember(diarioId) {
         mutableStateMapOf<String, String>()
@@ -262,108 +314,6 @@ fun DiarioEtapasScreen(
 
     val todasQuantidadesPreenchidas = veiculosEtapa3.all { veiculo ->
         quantidadesPorVeiculoEtapa3[veiculo].orEmpty().isNotBlank()
-    }
-
-    LaunchedEffect(diarioId) {
-        diario = viewModel.buscarDiarioPorId(diarioId)
-        diario?.let {
-            obra = viewModel.buscarObraPorId(it.obraId)
-            etapaExpandida = it.etapaAtual
-
-            // Etapa 1
-            encarregadoSelecionado = it.encarregado
-            equipeSelecionada = it.equipe
-                .split(" / ")
-                .filter { nome -> nome.isNotBlank() }
-                .toSet()
-
-            // Etapa 2
-            veiculosSelecionados = it.veiculo
-                .split(" / ")
-                .filter { nome -> nome.isNotBlank() }
-                .toSet()
-
-            equipamentosCompactacaoSelecionados = it.equipamentosAuxiliares
-                .split(" / ")
-                .filter { nome ->
-                    nome.isNotBlank() && LISTA_EQUIPAMENTOS_COMPACTACAO.contains(nome)
-                }
-                .toSet()
-
-            equipamentosSelecionados = it.equipamentosAuxiliares
-                .split(" / ")
-                .filter { nome ->
-                    nome.isNotBlank() && !LISTA_EQUIPAMENTOS_COMPACTACAO.contains(nome)
-                }
-                .toSet()
-
-            // Etapa 3
-            //quantidadeEtapa3 = it.pesoLiquidoTon
-
-            if (veiculoEtapa3Selecionado.isBlank()) {
-                val veiculos = it.veiculo
-                    .split(" / ")
-                    .filter { nome -> nome.isNotBlank() }
-
-                veiculoEtapa3Selecionado =
-                    if (veiculos.size == 1) veiculos.first() else ""
-            }
-
-            fotoTicketEtapa3Uri =
-                if (it.fotoTicketUri.isNotBlank()) Uri.parse(it.fotoTicketUri) else null
-        }
-    }
-
-    fun recarregarDiario() {
-        scope.launch {
-            diario = viewModel.buscarDiarioPorId(diarioId)
-            diario?.let {
-                obra = viewModel.buscarObraPorId(it.obraId)
-                etapaExpandida = it.etapaAtual
-
-                // Etapa 1
-                encarregadoSelecionado = it.encarregado
-                equipeSelecionada = it.equipe
-                    .split(" / ")
-                    .filter { nome -> nome.isNotBlank() }
-                    .toSet()
-
-                // Etapa 2
-                veiculosSelecionados = it.veiculo
-                    .split(" / ")
-                    .filter { nome -> nome.isNotBlank() }
-                    .toSet()
-
-                equipamentosCompactacaoSelecionados = it.equipamentosAuxiliares
-                    .split(" / ")
-                    .filter { nome ->
-                        nome.isNotBlank() && LISTA_EQUIPAMENTOS_COMPACTACAO.contains(nome)
-                    }
-                    .toSet()
-
-                equipamentosSelecionados = it.equipamentosAuxiliares
-                    .split(" / ")
-                    .filter { nome ->
-                        nome.isNotBlank() && !LISTA_EQUIPAMENTOS_COMPACTACAO.contains(nome)
-                    }
-                    .toSet()
-
-                // Etapa 3
-                //quantidadeEtapa3 = it.pesoLiquidoTon
-
-                if (veiculoEtapa3Selecionado.isBlank()) {
-                    val veiculos = it.veiculo
-                        .split(" / ")
-                        .filter { nome -> nome.isNotBlank() }
-
-                    veiculoEtapa3Selecionado =
-                        if (veiculos.size == 1) veiculos.first() else ""
-                }
-
-                fotoTicketEtapa3Uri =
-                    if (it.fotoTicketUri.isNotBlank()) Uri.parse(it.fotoTicketUri) else null
-            }
-        }
     }
 
     Scaffold(
@@ -493,20 +443,29 @@ fun DiarioEtapasScreen(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
+
                             Text("Deslocamento inicial", style = MaterialTheme.typography.titleSmall)
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            deslocamentosEtapa1.forEach { item ->
-                                DeslocamentoCard(
-                                    item = item,
-                                    somenteInicio = true,
-                                    onMarcarInicio = { viewModel.marcarInicio(item) },
-                                    onMarcarFim = { },
-                                    onSalvarManual = { inicio, _ ->
-                                        viewModel.atualizarHorarioManual(item, inicio, item.fim.orEmpty())
-                                    }
+                            if (deslocamentosEtapa1.isEmpty()) {
+                                Text(
+                                    text = "Deslocamento inicial não encontrado.",
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
+                            } else {
+                                deslocamentosEtapa1.forEach { item ->
+                                    DeslocamentoCard(
+                                        item = item,
+                                        somenteInicio = true,
+                                        onMarcarInicio = { viewModel.marcarInicio(item) },
+                                        onMarcarFim = { },
+                                        onSalvarManual = { inicio, _ ->
+                                            viewModel.atualizarHorarioManual(item, inicio, item.fim.orEmpty())
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
                             }
 
                             Button(
@@ -521,11 +480,6 @@ fun DiarioEtapasScreen(
                                             ?.filter { it.isNotBlank() }
                                             ?: emptyList()
                                     )
-
-                                    scope.launch {
-                                        delay(200)
-                                        recarregarDiario()
-                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 enabled = etapa1PodeConcluir
@@ -716,26 +670,12 @@ fun DiarioEtapasScreen(
 
                             Button(
                                 onClick = {
-                                    val listaFinalEquipamentos =
-                                        buildList {
-                                            addAll(equipamentosCompactacaoSelecionados)
-                                            addAll(
-                                                equipamentosSelecionados.filter {
-                                                    !equipamentosCompactacaoSelecionados.contains(it)
-                                                }
-                                            )
-                                        }
-
                                     viewModel.atualizarEquipamentoDiario(
                                         diarioId = diarioId,
                                         veiculo = veiculosSelecionados.joinToString(" / "),
-                                        equipamentosAuxiliares = listaFinalEquipamentos
+                                        equipamentosAuxiliares = equipamentosSelecionados.toList(),
+                                        equipamentosCompactacao = equipamentosCompactacaoSelecionados.toList()
                                     )
-
-                                    scope.launch {
-                                        delay(200)
-                                        recarregarDiario()
-                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 enabled = etapa2PodeConcluir
@@ -756,11 +696,7 @@ fun DiarioEtapasScreen(
                         desviosExpandido = false
                     },
                     conteudo = {
-                        //val todasQuantidadesPreenchidas = veiculosEtapa3.all { veiculo ->
-                        //    quantidadesPorVeiculoEtapa3[veiculo].orEmpty().isNotBlank()
-                        //}
-
-                        val todasQuantidadesPreenchidas =
+                        val todasQuantidadesPreenchidasLocais =
                             quantidadesEtapa3.size == veiculosEtapa3.size &&
                                     quantidadesEtapa3.all { it.isNotBlank() }
 
@@ -770,7 +706,7 @@ fun DiarioEtapasScreen(
                                     deslocamentoFimCarregamento.all { !it.inicio.isNullOrBlank() } &&
                                     deslocamentoPesagemCarregado.all { !it.inicio.isNullOrBlank() } &&
                                     deslocamentoSaidaUsinaTrecho.all { !it.inicio.isNullOrBlank() } &&
-                                    todasQuantidadesPreenchidas &&
+                                    todasQuantidadesPreenchidasLocais &&
                                     fotoTicketEtapa3Uri != null
 
                         Column {
@@ -879,7 +815,7 @@ fun DiarioEtapasScreen(
                                 Spacer(modifier = Modifier.height(12.dp))
 
                                 AsyncImage(
-                                    model = fotoTicketEtapa3Uri,
+                                    model = fotoTicketEtapa3Uri?.let { "${it}#${versaoPreviewTicket}" },
                                     contentDescription = "Miniatura do ticket",
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -925,11 +861,6 @@ fun DiarioEtapasScreen(
                                         pesoLiquidoTon = cargaConsolidada,
                                         fotoTicketUri = fotoTicketEtapa3Uri?.toString().orEmpty()
                                     )
-
-                                    scope.launch {
-                                        delay(200)
-                                        recarregarDiario()
-                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 enabled = etapa3PodeConcluir
@@ -950,13 +881,11 @@ fun DiarioEtapasScreen(
                         desviosExpandido = false
                     },
                     conteudo = {
-
                         val chegadaTrechoRegistrada = deslocamentoChegadaTrechoEtapa4.any {
                             !it.inicio.isNullOrBlank()
                         }
 
                         Column {
-
                             Text(
                                 "Chegada ao trecho",
                                 style = MaterialTheme.typography.titleSmall
@@ -968,10 +897,7 @@ fun DiarioEtapasScreen(
                                 Text("Deslocamento não encontrado.")
                             } else {
                                 deslocamentoChegadaTrechoEtapa4.forEach { item ->
-
-                                    val itemSemTitulo = item.copy(
-                                        titulo = ""
-                                    )
+                                    val itemSemTitulo = item.copy(titulo = "")
 
                                     DeslocamentoCard(
                                         item = itemSemTitulo,
@@ -1001,29 +927,22 @@ fun DiarioEtapasScreen(
                             Spacer(modifier = Modifier.height(12.dp))
 
                             if (servicos.isEmpty()) {
-
                                 Text(
                                     text = "Nenhum serviço lançado ainda.",
                                     style = MaterialTheme.typography.bodyMedium
                                 )
-
                             } else {
-
                                 servicos.forEach { servico ->
-
                                     Card(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(bottom = 8.dp)
-                                            .clickable {
-                                                onAbrirServico(servico.id)
-                                            },
+                                            .clickable { onAbrirServico(servico.id) },
                                         colors = CardDefaults.cardColors(
                                             containerColor = Color(0xFFF5F5F5)
                                         )
                                     ) {
                                         Column(modifier = Modifier.padding(12.dp)) {
-
                                             Text(
                                                 text = "Protocolo: ${servico.numeroProtocolo}",
                                                 style = MaterialTheme.typography.titleSmall
@@ -1054,9 +973,7 @@ fun DiarioEtapasScreen(
                             Spacer(modifier = Modifier.height(16.dp))
 
                             Button(
-                                onClick = {
-                                    onAbrirServico(0L)
-                                },
+                                onClick = { onAbrirServico(0L) },
                                 enabled = chegadaTrechoRegistrada,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -1105,11 +1022,6 @@ fun DiarioEtapasScreen(
                                         horarioFechamentoServicos = diario?.horarioFechamentoServicos ?: "17:00",
                                         observacaoFechamentoServicos = diario?.observacaoFechamentoServicos.orEmpty()
                                     )
-
-                                    scope.launch {
-                                        delay(200)
-                                        recarregarDiario()
-                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -1151,11 +1063,6 @@ fun DiarioEtapasScreen(
                                         chegadaBase = diario?.chegadaBase ?: "18:00",
                                         observacaoRetornoBase = diario?.observacaoRetornoBase.orEmpty()
                                     )
-
-                                    scope.launch {
-                                        delay(200)
-                                        recarregarDiario()
-                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -1182,11 +1089,6 @@ fun DiarioEtapasScreen(
                             codigo = "D01",
                             descricao = "Desvio teste"
                         )
-
-                        scope.launch {
-                            delay(200)
-                            recarregarDiario()
-                        }
                     }
                 )
 
@@ -1221,11 +1123,6 @@ fun DiarioEtapasScreen(
                                             observacaoFinalDo = diario?.observacaoFinalDo?.ifBlank { "D.O. finalizado" }
                                                 ?: "D.O. finalizado"
                                         )
-
-                                        scope.launch {
-                                            delay(200)
-                                            recarregarDiario()
-                                        }
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -1248,7 +1145,7 @@ fun DiarioEtapasScreen(
                             modifier = Modifier.padding(12.dp)
                         ) {
                             AsyncImage(
-                                model = fotoTicketEtapa3Uri,
+                                model = fotoTicketEtapa3Uri?.let { "${it}#${versaoPreviewTicket}" },
                                 contentDescription = "Ticket ampliado",
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1270,7 +1167,6 @@ fun DiarioEtapasScreen(
         }
     }
 }
-
 
 @Composable
 private fun EtapaCard(
@@ -1479,7 +1375,6 @@ private val LISTA_LIMPEZA_ENTULHO = listOf(
     "Em espera"
 )
 
-
 private fun criarUriParaFotoEtapa(context: Context): Uri {
     val arquivo = File(
         context.cacheDir,
@@ -1525,6 +1420,7 @@ private fun CamposQuantidadeEtapa3(
         }
     }
 }
+
 private fun filtrarEntradaDecimal(valor: String): String? {
     if (valor.isEmpty()) return ""
 
