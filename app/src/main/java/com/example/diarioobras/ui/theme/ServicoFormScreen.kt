@@ -136,6 +136,8 @@ fun ServicoFormScreen(
         .buscarDiarioFlow(diarioId)
         .collectAsStateWithLifecycle(initialValue = null)
 
+    val modoSomenteLeitura = diario?.statusServicos == "CONCLUIDA"
+
     var servicoIdAtual by remember { mutableLongStateOf(servicoId) }
 
     var ordemServico by remember { mutableStateOf("") }
@@ -178,6 +180,8 @@ fun ServicoFormScreen(
     var fotoCavaAbertaUri by remember { mutableStateOf<Uri?>(null) }
     var fotoConclusaoUri by remember { mutableStateOf<Uri?>(null) }
     var versaoPreviewFotos by remember { mutableStateOf(0) }
+    var horarioFotoAntes by remember { mutableStateOf<String?>(null) }
+    var horarioFotoConclusao by remember { mutableStateOf<String?>(null) }
 
     var latitudeAtual by remember { mutableStateOf<Double?>(null) }
     var longitudeAtual by remember { mutableStateOf<Double?>(null) }
@@ -274,9 +278,11 @@ fun ServicoFormScreen(
             longitude = longitudeAtual,
             nomeRua = enderecoServico.ifBlank { null },
             fotoUri = fotoAntesUri?.toString(),
+            horarioFotoAntes = horarioFotoAntes,
             fotoCavaAbertaUri = fotoCavaAbertaUri?.toString(),
             fotoEspessuraUri = fotoEspessuraUri?.toString(),
             fotoConclusaoUri = fotoConclusaoUri?.toString(),
+            horarioFotoConclusao = horarioFotoConclusao,
             sincronizado = false,
             aberturaCava = aberturaCava,
             limpezaEntulho = limpezaEntulho,
@@ -311,6 +317,7 @@ fun ServicoFormScreen(
     ) { success ->
         if (success) {
             versaoPreviewFotos++
+
             if (
                 ContextCompat.checkSelfPermission(
                     context,
@@ -339,6 +346,18 @@ fun ServicoFormScreen(
                             }
                         }
                     }
+            }
+
+            val horarioAtual =
+                java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                    .format(java.util.Date())
+
+            if (fotoEmCaptura == "ANTES") {
+                horarioFotoAntes = horarioAtual
+            }
+
+            if (fotoEmCaptura == "CONCLUSAO") {
+                horarioFotoConclusao = horarioAtual
             }
         }
     }
@@ -394,9 +413,14 @@ fun ServicoFormScreen(
                 enderecoServico = servico.endereco
 
                 fotoAntesUri = servico.fotoUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
-                fotoCavaAbertaUri = servico.fotoCavaAbertaUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
-                fotoEspessuraUri = servico.fotoEspessuraUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
-                fotoConclusaoUri = servico.fotoConclusaoUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+                horarioFotoAntes = servico.horarioFotoAntes
+                fotoCavaAbertaUri =
+                    servico.fotoCavaAbertaUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+                fotoEspessuraUri =
+                    servico.fotoEspessuraUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+                fotoConclusaoUri =
+                    servico.fotoConclusaoUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+                horarioFotoConclusao = servico.horarioFotoConclusao
 
                 latitudeAtual = servico.latitude
                 longitudeAtual = servico.longitude
@@ -422,12 +446,10 @@ fun ServicoFormScreen(
 
                 exibindoFormularioArea = areasCava.isEmpty()
             }
-        }
-    }
+        } else {
+            val servicosExistentes = viewModel.buscarDiarioCompleto(diarioId)?.servicos.orEmpty()
+            val proximo = (servicosExistentes.maxOfOrNull { it.ordemServico } ?: 0) + 1
 
-    LaunchedEffect(servicoIdAtual, servicosDoDiario.size) {
-        if (servicoIdAtual == 0L && numeroProtocolo.isBlank()) {
-            val proximo = (servicosDoDiario.maxOfOrNull { it.ordemServico } ?: 0) + 1
             numeroProtocolo = proximo.toString()
             ordemServico = proximo.toString()
         }
@@ -445,7 +467,13 @@ fun ServicoFormScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(if (servicoIdAtual == 0L) "Cadastro de serviço" else "Editar serviço")
+                    Text(
+                        when {
+                            modoSomenteLeitura -> "Consulta do serviço"
+                            servicoIdAtual == 0L -> "Cadastro de serviço"
+                            else -> "Editar serviço"
+                        }
+                    )
                 }
             )
         }
@@ -490,6 +518,7 @@ fun ServicoFormScreen(
                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     }
                 },
+                enabled = !modoSomenteLeitura,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(if (fotoAntesUri == null) "Capturar foto antes" else "Trocar foto antes")
@@ -515,7 +544,8 @@ fun ServicoFormScreen(
                 value = numeroProtocolo,
                 onValueChange = { numeroProtocolo = it },
                 label = { Text("Protocolo") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !modoSomenteLeitura
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -525,7 +555,8 @@ fun ServicoFormScreen(
                 onValueChange = { ordemServico = it.filter(Char::isDigit) },
                 label = { Text("Ordem de serviço") },
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                enabled = !modoSomenteLeitura
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -534,7 +565,8 @@ fun ServicoFormScreen(
                 value = enderecoServico,
                 onValueChange = { enderecoServico = it },
                 label = { Text("Endereço") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !modoSomenteLeitura
             )
 
             if (latitudeAtual != null && longitudeAtual != null) {
@@ -555,13 +587,14 @@ fun ServicoFormScreen(
 
             OutlinedButton(
                 onClick = { menuAberturaExpandido = true },
+                enabled = !modoSomenteLeitura,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(if (aberturaCava.isBlank()) "Selecionar" else aberturaCava)
             }
 
             DropdownMenu(
-                expanded = menuAberturaExpandido,
+                expanded = menuAberturaExpandido && !modoSomenteLeitura,
                 onDismissRequest = { menuAberturaExpandido = false }
             ) {
                 LISTA_ABERTURA_CAVA.forEach { item ->
@@ -585,13 +618,14 @@ fun ServicoFormScreen(
 
             OutlinedButton(
                 onClick = { menuLimpezaExpandido = true },
+                enabled = !modoSomenteLeitura,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(if (limpezaEntulho.isBlank()) "Selecionar" else limpezaEntulho)
             }
 
             DropdownMenu(
-                expanded = menuLimpezaExpandido,
+                expanded = menuLimpezaExpandido && !modoSomenteLeitura,
                 onDismissRequest = { menuLimpezaExpandido = false }
             ) {
                 LISTA_LIMPEZA_ENTULHO.forEach { item ->
@@ -641,6 +675,7 @@ fun ServicoFormScreen(
                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     }
                 },
+                enabled = !modoSomenteLeitura,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
@@ -700,7 +735,8 @@ fun ServicoFormScreen(
                             larguraFocusRequester.requestFocus()
                         }
                     ),
-                    singleLine = true
+                    singleLine = true,
+                    enabled = !modoSomenteLeitura
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -724,7 +760,8 @@ fun ServicoFormScreen(
                             espessuraFocusRequester.requestFocus()
                         }
                     ),
-                    singleLine = true
+                    singleLine = true,
+                    enabled = !modoSomenteLeitura
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -744,34 +781,37 @@ fun ServicoFormScreen(
                     ),
                     keyboardActions = KeyboardActions(
                         onDone = {
-                            comprimento = formatarCampoDecimal(comprimento)
-                            largura = formatarCampoDecimal(largura)
-                            espessura = formatarCampoDecimal(espessura)
+                            if (!modoSomenteLeitura) {
+                                comprimento = formatarCampoDecimal(comprimento)
+                                largura = formatarCampoDecimal(largura)
+                                espessura = formatarCampoDecimal(espessura)
 
-                            val comp = comprimento.replace(",", ".").toDoubleOrNull()
-                            val larg = largura.replace(",", ".").toDoubleOrNull()
-                            val esp = espessura.replace(",", ".").toDoubleOrNull()
+                                val comp = comprimento.replace(",", ".").toDoubleOrNull()
+                                val larg = largura.replace(",", ".").toDoubleOrNull()
+                                val esp = espessura.replace(",", ".").toDoubleOrNull()
 
-                            if (comp != null && larg != null && esp != null) {
-                                areasCava.add(
-                                    AreaCavaUi(
-                                        numero = areasCava.size + 1,
-                                        comprimento = comp,
-                                        largura = larg,
-                                        espessuraCm = esp
+                                if (comp != null && larg != null && esp != null) {
+                                    areasCava.add(
+                                        AreaCavaUi(
+                                            numero = areasCava.size + 1,
+                                            comprimento = comp,
+                                            largura = larg,
+                                            espessuraCm = esp
+                                        )
                                     )
-                                )
 
-                                comprimento = ""
-                                largura = ""
-                                espessura = "5,00"
-                                exibindoFormularioArea = false
+                                    comprimento = ""
+                                    largura = ""
+                                    espessura = "5,00"
+                                    exibindoFormularioArea = false
+                                }
+
+                                keyboardController?.hide()
                             }
-
-                            keyboardController?.hide()
                         }
                     ),
-                    singleLine = true
+                    singleLine = true,
+                    enabled = !modoSomenteLeitura
                 )
             }
 
@@ -842,6 +882,7 @@ fun ServicoFormScreen(
                         largura = ""
                         espessura = "5,00"
                     },
+                    enabled = !modoSomenteLeitura,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("+")
@@ -884,6 +925,7 @@ fun ServicoFormScreen(
                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     }
                 },
+                enabled = !modoSomenteLeitura,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
@@ -914,14 +956,19 @@ fun ServicoFormScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { pinturaLigacao = !pinturaLigacao },
+                    .clickable(enabled = !modoSomenteLeitura) {
+                        pinturaLigacao = !pinturaLigacao
+                    },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Checkbox(
                     checked = pinturaLigacao,
                     onCheckedChange = { checked ->
-                        pinturaLigacao = checked
-                    }
+                        if (!modoSomenteLeitura) {
+                            pinturaLigacao = checked
+                        }
+                    },
+                    enabled = !modoSomenteLeitura
                 )
 
                 Text(
@@ -946,6 +993,7 @@ fun ServicoFormScreen(
                             menuEquipamentoCompactacaoExpandido = true
                         }
                     },
+                    enabled = !modoSomenteLeitura,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -959,7 +1007,7 @@ fun ServicoFormScreen(
 
                 if (equipamentosCompactacao.size > 1) {
                     DropdownMenu(
-                        expanded = menuEquipamentoCompactacaoExpandido,
+                        expanded = menuEquipamentoCompactacaoExpandido && !modoSomenteLeitura,
                         onDismissRequest = { menuEquipamentoCompactacaoExpandido = false }
                     ) {
                         equipamentosCompactacao.forEach { equipamento ->
@@ -1011,6 +1059,7 @@ fun ServicoFormScreen(
                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     }
                 },
+                enabled = !modoSomenteLeitura,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
@@ -1038,6 +1087,14 @@ fun ServicoFormScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            if (modoSomenteLeitura) {
+                Text(
+                    text = "Serviço em modo consulta. Alterações bloqueadas após o encerramento dos serviços.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             Button(
                 onClick = {
                     scope.launch {
@@ -1046,7 +1103,9 @@ fun ServicoFormScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = numeroProtocolo.isNotBlank() && enderecoServico.isNotBlank()
+                enabled = numeroProtocolo.isNotBlank() &&
+                        enderecoServico.isNotBlank() &&
+                        !modoSomenteLeitura
             ) {
                 Text("Salvar serviço")
             }

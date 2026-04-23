@@ -68,6 +68,7 @@ data class DiarioEntity(
     // Etapa 5 - Fechamento dos serviços
     val horarioFechamentoServicos: String? = null,
     val observacaoFechamentoServicos: String = "",
+    val proximoDestino: String = "",
     val fechamentoServicosConcluido: Boolean = false,
 
     // Etapa 6 - Retorno à base
@@ -184,15 +185,18 @@ data class ServicoEntity(
     val nomeRua: String? = null,
 
     val fotoUri: String? = null,
+    val horarioFotoAntes: String? = null,
     val fotoCavaAbertaUri: String? = null,
     val fotoEspessuraUri: String? = null,
     val fotoConclusaoUri: String? = null,
+    val horarioFotoConclusao: String? = null,
 
     val sincronizado: Boolean = false,
     val aberturaCava: String = "",
     val limpezaEntulho: String = "",
     val pinturaLigacao: Boolean = false,
     val equipamentoCompactacaoUsado: String = ""
+
 )
 
 @Entity(

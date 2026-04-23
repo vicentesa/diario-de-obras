@@ -106,6 +106,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return servicoId
     }
 
+    fun excluirServico(servico: ServicoEntity) {
+        viewModelScope.launch {
+            dao.excluirServico(servico)
+        }
+    }
+
+    fun encerrarServicos(diarioId: Long, proximoDestino: String) {
+        viewModelScope.launch {
+            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+            val horaAtual = horaAtual()
+
+            dao.atualizarIntervaloEFechamentoServicos(
+                diarioId = diarioId,
+                inicioIntervalo = diarioAtual.inicioIntervalo,
+                fimIntervalo = diarioAtual.fimIntervalo,
+                observacaoIntervalo = diarioAtual.observacaoIntervalo,
+                intervaloRegistrado = diarioAtual.intervaloRegistrado,
+                horarioFechamentoServicos = horaAtual,
+                observacaoFechamentoServicos = diarioAtual.observacaoFechamentoServicos,
+                proximoDestino = proximoDestino,
+                fechamentoServicosConcluido = true
+            )
+
+            dao.atualizarStatusEtapasDiario(
+                diarioId = diarioId,
+                etapaAtual = 6,
+                statusEquipe = diarioAtual.statusEquipe,
+                statusEquipamento = diarioAtual.statusEquipamento,
+                statusCarregamento = diarioAtual.statusCarregamento,
+                statusServicos = "CONCLUIDA",
+                statusFechamentoServicos = "CONCLUIDA",
+                statusRetornoBase = "DISPONIVEL",
+                statusFechamentoDo = diarioAtual.statusFechamentoDo,
+                diarioFechado = diarioAtual.diarioFechado
+            )
+        }
+    }
+
     suspend fun montarServicosParaExportacao(diarioId: Long): List<ServicoExportacao> {
         val diarioCompleto = dao.buscarDiarioCompletoPorId(diarioId) ?: return emptyList()
 
@@ -494,6 +532,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 intervaloRegistrado = intervaloRegistrado,
                 horarioFechamentoServicos = horarioFechamentoServicos,
                 observacaoFechamentoServicos = observacaoFechamentoServicos,
+                proximoDestino = diarioAtual.proximoDestino,
                 fechamentoServicosConcluido = true
             )
 
@@ -512,6 +551,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun marcarSaidaEtapa6(diarioId: Long) {
+        viewModelScope.launch {
+            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+
+            dao.atualizarRetornoEFechamentoDo(
+                diarioId = diarioId,
+                saidaRetornoBase = horaAtual(),
+                chegadaBase = diarioAtual.chegadaBase,
+                observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
+                retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
+                observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                diarioFechado = diarioAtual.diarioFechado
+            )
+        }
+    }
+
+    fun marcarChegadaEtapa6(diarioId: Long) {
+        viewModelScope.launch {
+            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+
+            dao.atualizarRetornoEFechamentoDo(
+                diarioId = diarioId,
+                saidaRetornoBase = diarioAtual.saidaRetornoBase,
+                chegadaBase = horaAtual(),
+                observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
+                retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
+                observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                diarioFechado = diarioAtual.diarioFechado
+            )
+        }
+    }
     fun concluirRetornoBase(
         diarioId: Long,
         saidaRetornoBase: String?,
@@ -735,6 +805,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         fechamentoServicosConcluido: Boolean
     ) {
         viewModelScope.launch {
+            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
             dao.atualizarIntervaloEFechamentoServicos(
                 diarioId = diarioId,
                 inicioIntervalo = inicioIntervalo,
@@ -743,6 +814,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 intervaloRegistrado = intervaloRegistrado,
                 horarioFechamentoServicos = horarioFechamentoServicos,
                 observacaoFechamentoServicos = observacaoFechamentoServicos,
+                proximoDestino = diarioAtual.proximoDestino,
                 fechamentoServicosConcluido = fechamentoServicosConcluido
             )
         }

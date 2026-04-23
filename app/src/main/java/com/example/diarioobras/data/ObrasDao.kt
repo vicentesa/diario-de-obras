@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
+import com.example.diarioobras.data.ServicoEntity
 
 @Dao
 interface ObrasDao {
@@ -161,6 +162,7 @@ interface ObrasDao {
             intervaloRegistrado = :intervaloRegistrado,
             horarioFechamentoServicos = :horarioFechamentoServicos,
             observacaoFechamentoServicos = :observacaoFechamentoServicos,
+            proximoDestino = :proximoDestino,
             fechamentoServicosConcluido = :fechamentoServicosConcluido
         WHERE id = :diarioId
         """
@@ -173,7 +175,9 @@ interface ObrasDao {
         intervaloRegistrado: Boolean,
         horarioFechamentoServicos: String?,
         observacaoFechamentoServicos: String,
+        proximoDestino: String,
         fechamentoServicosConcluido: Boolean
+
     )
 
     @Query(
@@ -197,4 +201,10 @@ interface ObrasDao {
         observacaoFinalDo: String,
         diarioFechado: Boolean
     )
+
+    @Query("DELETE FROM servicos WHERE id = :servicoId")
+    suspend fun excluirServicoPorId(servicoId: Long)
+
+    @Delete
+    suspend fun excluirServico(servico: ServicoEntity)
 }

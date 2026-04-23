@@ -43,8 +43,23 @@ import com.google.android.gms.location.LocationServices
 import java.io.File
 import java.util.Locale
 import java.util.UUID
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.foundation.ExperimentalFoundationApi
 
-@OptIn(ExperimentalMaterial3Api::class)
+import com.example.diarioobras.data.ServicoEntity
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.*
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DiarioEtapasScreen(
     diarioId: Long,
@@ -116,9 +131,34 @@ fun DiarioEtapasScreen(
     var longitudeServico by remember { mutableStateOf<Double?>(null) }
     var enderecoServico by remember { mutableStateOf("") }
 
+    var servicoSelecionadoParaExcluir by remember { mutableStateOf<Long?>(null) }
+    var servicoPendenteExclusao by remember { mutableStateOf<ServicoEntity?>(null) }
+
+    var mostrarDialogoEncerrarServicos by remember { mutableStateOf(false) }
+
+    var menuProximoDestinoExpandido by remember { mutableStateOf(false) }
+    var proximoDestinoSelecionado by remember(diarioId) { mutableStateOf("") }
+
     val fusedLocationClient = remember(context) {
         LocationServices.getFusedLocationProviderClient(context)
     }
+
+    val areasPorServico = remember { mutableStateMapOf<Long, Double>() }
+
+    LaunchedEffect(servicos) {
+        val novoMapa = mutableMapOf<Long, Double>()
+
+        servicos.forEach { servico ->
+            val areas = viewModel.listarServicoAreasDireto(servico.id)
+            val areaTotal = areas.sumOf { it.comprimento * it.largura }
+            novoMapa[servico.id] = areaTotal
+        }
+
+        areasPorServico.clear()
+        areasPorServico.putAll(novoMapa)
+    }
+
+    val areaTotalDoDia = areasPorServico.values.sum()
 
     LaunchedEffect(diario?.obraId) {
         val obraId = diario?.obraId ?: return@LaunchedEffect
@@ -130,6 +170,7 @@ fun DiarioEtapasScreen(
         if (dadosLocaisInicializados) return@LaunchedEffect
 
         etapaExpandida = diarioAtual.etapaAtual
+        proximoDestinoSelecionado = diarioAtual.proximoDestino
 
         // Etapa 1
         encarregadoSelecionado = diarioAtual.encarregado
@@ -174,6 +215,14 @@ fun DiarioEtapasScreen(
         val etapaAtualBanco = diario?.etapaAtual ?: return@LaunchedEffect
         if (etapaAtualBanco > etapaExpandida) {
             etapaExpandida = etapaAtualBanco
+        }
+    }
+
+    LaunchedEffect(servicos) {
+        servicos.forEach { servico ->
+            val areas = viewModel.listarServicoAreasDireto(servico.id)
+            val areaTotal = areas.sumOf { it.comprimento * it.largura }
+            areasPorServico[servico.id] = areaTotal
         }
     }
 
@@ -885,6 +934,8 @@ fun DiarioEtapasScreen(
                             !it.inicio.isNullOrBlank()
                         }
 
+                        val servicosEncerrados = diario?.statusServicos == "CONCLUIDA"
+
                         Column {
                             Text(
                                 "Chegada ao trecho",
@@ -920,8 +971,10 @@ fun DiarioEtapasScreen(
                             Spacer(modifier = Modifier.height(16.dp))
 
                             Text(
-                                text = "Serviços executados: ${servicos.size}",
-                                style = MaterialTheme.typography.titleMedium
+                                text = "Serviços executados: ${servicos.size} | Área do dia: ${
+                                    formatarDecimalTruncado(areaTotalDoDia)
+                                } m²",
+                                style = MaterialTheme.typography.bodyMedium
                             )
 
                             Spacer(modifier = Modifier.height(12.dp))
@@ -933,38 +986,106 @@ fun DiarioEtapasScreen(
                                 )
                             } else {
                                 servicos.forEach { servico ->
+
+                                    val textoHorario = when {
+                                        !servico.horarioFotoAntes.isNullOrBlank() && !servico.horarioFotoConclusao.isNullOrBlank() ->
+                                            "Horário: ${servico.horarioFotoAntes} às ${servico.horarioFotoConclusao}"
+
+                                        !servico.horarioFotoAntes.isNullOrBlank() ->
+                                            "Horário: ${servico.horarioFotoAntes}"
+
+                                        else ->
+                                            "Horário não registrado"
+                                    }
+
                                     Card(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(bottom = 8.dp)
-                                            .clickable { onAbrirServico(servico.id) },
+                                            .combinedClickable(
+                                                onClick = {
+                                                    if (servicoSelecionadoParaExcluir == servico.id) {
+                                                        servicoSelecionadoParaExcluir = null
+                                                    } else {
+                                                        onAbrirServico(servico.id)
+                                                    }
+                                                },
+                                                onLongClick = {
+                                                    servicoSelecionadoParaExcluir = servico.id
+                                                }
+                                            ),
                                         colors = CardDefaults.cardColors(
                                             containerColor = Color(0xFFF5F5F5)
                                         )
                                     ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Text(
-                                                text = "Protocolo: ${servico.numeroProtocolo}",
-                                                style = MaterialTheme.typography.titleSmall
-                                            )
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = "Protocolo: ${servico.numeroProtocolo}",
+                                                        style = MaterialTheme.typography.titleSmall
+                                                    )
 
-                                            Spacer(modifier = Modifier.height(4.dp))
+                                                    if (!servicosEncerrados && servicoSelecionadoParaExcluir == servico.id) {
+                                                        IconButton(
+                                                            onClick = {
+                                                                servicoPendenteExclusao = servico
+                                                            }
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Delete,
+                                                                contentDescription = "Excluir serviço"
+                                                            )
+                                                        }
+                                                    }
+                                                }
 
-                                            Text(
-                                                text = servico.endereco.ifBlank {
-                                                    "Endereço não informado"
-                                                },
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
+                                                Spacer(modifier = Modifier.height(4.dp))
 
-                                            Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = servico.endereco.ifBlank {
+                                                        "Endereço não informado"
+                                                    },
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
 
-                                            Text(
-                                                text = servico.inicio?.let {
-                                                    "Início: $it"
-                                                } ?: "Horário não registrado",
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
+                                                Spacer(modifier = Modifier.height(4.dp))
+
+                                                Text(
+                                                    text = textoHorario,
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+
+                                                Spacer(modifier = Modifier.height(4.dp))
+
+                                                Text(
+                                                    text = "Área total: ${formatarDecimalTruncado(areasPorServico[servico.id] ?: 0.0)} m²",
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
+
+                                            servico.fotoConclusaoUri?.takeIf { it.isNotBlank() }?.let { fotoUri ->
+                                                AsyncImage(
+                                                    model = fotoUri,
+                                                    contentDescription = "Foto final do serviço",
+                                                    modifier = Modifier
+                                                        .height(88.dp)
+                                                        .fillMaxWidth(0.28f),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -972,12 +1093,61 @@ fun DiarioEtapasScreen(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
+                            if (servicosEncerrados) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Serviços encerrados. Novos lançamentos e alterações estão bloqueados.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+
                             Button(
-                                onClick = { onAbrirServico(0L) },
-                                enabled = chegadaTrechoRegistrada,
+                                onClick = {
+                                    if (!servicosEncerrados) {
+                                        onAbrirServico(0L)
+                                    }
+                                },
+                                enabled = chegadaTrechoRegistrada && !servicosEncerrados,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text("Adicionar serviço")
+                            }
+
+                            if (servicoPendenteExclusao != null) {
+                                AlertDialog(
+                                    onDismissRequest = {
+                                        servicoPendenteExclusao = null
+                                    },
+                                    title = {
+                                        Text("Excluir serviço")
+                                    },
+                                    text = {
+                                        Text("Tem certeza que deseja apagar este serviço?")
+                                    },
+                                    confirmButton = {
+                                        TextButton(
+                                            onClick = {
+                                                servicoPendenteExclusao?.let { servico ->
+                                                    viewModel.excluirServico(servico)
+                                                }
+                                                servicoSelecionadoParaExcluir = null
+                                                servicoPendenteExclusao = null
+                                            }
+                                        ) {
+                                            Text("Apagar")
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(
+                                            onClick = {
+                                                servicoPendenteExclusao = null
+                                            }
+                                        ) {
+                                            Text("Cancelar")
+                                        }
+                                    }
+                                )
                             }
                         }
                     }
@@ -995,37 +1165,119 @@ fun DiarioEtapasScreen(
                     conteudo = {
                         Column {
                             Text(
-                                "Intervalo: ${
-                                    if (diario?.intervaloRegistrado == true) {
-                                        "${diario?.inicioIntervalo ?: "--:--"} às ${diario?.fimIntervalo ?: "--:--"}"
-                                    } else {
-                                        "Não registrado"
-                                    }
-                                }"
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
                                 "Fechamento: ${
                                     diario?.horarioFechamentoServicos?.ifBlank { "Não informado" } ?: "Não informado"
                                 }"
                             )
+
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            Button(
+                            Text(
+                                text = "Próximo destino",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedButton(
                                 onClick = {
-                                    viewModel.concluirFechamentoServicos(
-                                        diarioId = diarioId,
-                                        inicioIntervalo = diario?.inicioIntervalo ?: "12:00",
-                                        fimIntervalo = diario?.fimIntervalo ?: "13:00",
-                                        observacaoIntervalo = diario?.observacaoIntervalo.orEmpty(),
-                                        intervaloRegistrado = true,
-                                        horarioFechamentoServicos = diario?.horarioFechamentoServicos ?: "17:00",
-                                        observacaoFechamentoServicos = diario?.observacaoFechamentoServicos.orEmpty()
-                                    )
+                                    menuProximoDestinoExpandido = true
                                 },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = diario?.statusServicos != "CONCLUIDA"
                             ) {
-                                Text("Concluir etapa 5")
+                                Text(
+                                    if (proximoDestinoSelecionado.isBlank()) {
+                                        "Selecionar próximo destino"
+                                    } else {
+                                        proximoDestinoSelecionado
+                                    }
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = menuProximoDestinoExpandido && diario?.statusServicos != "CONCLUIDA",
+                                onDismissRequest = { menuProximoDestinoExpandido = false }
+                            ) {
+                                listOf(
+                                    "Retorno à base",
+                                    "Atendimento a outro Contrato",
+                                    "Para hospedagem"
+                                ).forEach { opcao ->
+                                    DropdownMenuItem(
+                                        text = { Text(opcao) },
+                                        onClick = {
+                                            proximoDestinoSelecionado = opcao
+                                            menuProximoDestinoExpandido = false
+                                        }
+                                    )
+                                }
+                            }
+
+                            if (diario?.proximoDestino?.isNotBlank() == true) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Destino selecionado: ${diario?.proximoDestino}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            if (diario?.statusServicos != "CONCLUIDA") {
+
+                                Button(
+                                    onClick = {
+                                        mostrarDialogoEncerrarServicos = true
+                                    },
+                                    enabled = proximoDestinoSelecionado.isNotBlank(),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Encerrar serviços")
+                                }
+
+                            } else {
+
+                                Text(
+                                    text = "Serviços encerrados. Apenas consulta disponível.",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+
+                            if (mostrarDialogoEncerrarServicos) {
+                                AlertDialog(
+                                    onDismissRequest = {
+                                        mostrarDialogoEncerrarServicos = false
+                                    },
+                                    title = {
+                                        Text("Encerrar serviços")
+                                    },
+                                    text = {
+                                        Text("Após o fechamento dos serviços, não serão permitidos novos lançamentos nem alterações nos serviços já registrados. Será permitida apenas a consulta. Deseja continuar?")
+                                    },
+                                    confirmButton = {
+                                        TextButton(
+                                            onClick = {
+                                                viewModel.encerrarServicos(
+                                                    diarioId = diarioId,
+                                                    proximoDestino = proximoDestinoSelecionado
+                                                )
+                                                mostrarDialogoEncerrarServicos = false
+                                            }
+                                        ) {
+                                            Text("Encerrar")
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(
+                                            onClick = {
+                                                mostrarDialogoEncerrarServicos = false
+                                            }
+                                        ) {
+                                            Text("Cancelar")
+                                        }
+                                    }
+                                )
                             }
                         }
                     }
@@ -1033,7 +1285,12 @@ fun DiarioEtapasScreen(
 
                 EtapaCard(
                     numero = 6,
-                    titulo = "Retorno à base",
+                    titulo = when (diario?.proximoDestino) {
+                        "Retorno à base" -> "Retorno à base"
+                        "Atendimento a outro Contrato" -> "Deslocamento para outro contrato"
+                        "Para hospedagem" -> "Deslocamento para hospedagem"
+                        else -> "Deslocamento ao próximo destino"
+                    },
                     status = diario?.statusRetornoBase ?: "BLOQUEADA",
                     expandida = etapaExpandida == 6,
                     onClick = {
@@ -1041,32 +1298,110 @@ fun DiarioEtapasScreen(
                         desviosExpandido = false
                     },
                     conteudo = {
+                        val destinoSelecionado =
+                            if (diario?.proximoDestino.isNullOrBlank()) {
+                                proximoDestinoSelecionado
+                            } else {
+                                diario?.proximoDestino.orEmpty()
+                            }
+
+                        val labelSaida = when (destinoSelecionado) {
+                            "Retorno à base" -> "Saída para retorno"
+                            "Atendimento a outro Contrato" -> "Saída para outro contrato"
+                            "Para hospedagem" -> "Saída para hospedagem"
+                            else -> "Saída"
+                        }
+
+                        val labelChegada = when (destinoSelecionado) {
+                            "Retorno à base" -> "Chegada à base"
+                            "Atendimento a outro Contrato" -> "Chegada ao outro contrato"
+                            "Para hospedagem" -> "Chegada à hospedagem"
+                            else -> "Chegada ao destino"
+                        }
+
+                        val mensagemConclusao = when (destinoSelecionado) {
+                            "Retorno à base" -> "Retorno à base concluído."
+                            "Atendimento a outro Contrato" -> "Deslocamento para outro contrato concluído."
+                            "Para hospedagem" -> "Deslocamento para hospedagem concluído."
+                            else -> "Deslocamento concluído."
+                        }
+
+                        val saidaRegistrada = !diario?.saidaRetornoBase.isNullOrBlank()
+                        val chegadaRegistrada = !diario?.chegadaBase.isNullOrBlank()
+                        val etapaConcluida = diario?.statusRetornoBase == "CONCLUIDA"
+
                         Column {
+                            if (destinoSelecionado.isNotBlank()) {
+                                Text(
+                                    text = "Próximo destino: $destinoSelecionado",
+                                    style = MaterialTheme.typography.titleSmall
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+
                             Text(
-                                "Saída: ${
+                                text = "$labelSaida: ${
                                     diario?.saidaRetornoBase?.ifBlank { "Não informada" } ?: "Não informada"
                                 }"
                             )
+
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "Chegada à base: ${
-                                    diario?.chegadaBase?.ifBlank { "Não informada" } ?: "Não informada"
-                                }"
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
 
                             Button(
                                 onClick = {
-                                    viewModel.concluirRetornoBase(
-                                        diarioId = diarioId,
-                                        saidaRetornoBase = diario?.saidaRetornoBase ?: "17:30",
-                                        chegadaBase = diario?.chegadaBase ?: "18:00",
-                                        observacaoRetornoBase = diario?.observacaoRetornoBase.orEmpty()
-                                    )
+                                    viewModel.marcarSaidaEtapa6(diarioId)
                                 },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = destinoSelecionado.isNotBlank() && !etapaConcluida
                             ) {
-                                Text("Concluir etapa 6")
+                                Text(if (saidaRegistrada) "Atualizar saída" else "Marcar saída")
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Text(
+                                text = "$labelChegada: ${
+                                    diario?.chegadaBase?.ifBlank { "Não informada" } ?: "Não informada"
+                                }"
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Button(
+                                onClick = {
+                                    viewModel.marcarChegadaEtapa6(diarioId)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = destinoSelecionado.isNotBlank() && saidaRegistrada && !etapaConcluida
+                            ) {
+                                Text(if (chegadaRegistrada) "Atualizar chegada" else "Marcar chegada")
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            if (etapaConcluida) {
+                                Text(
+                                    text = mensagemConclusao,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            } else {
+                                Button(
+                                    onClick = {
+                                        viewModel.concluirRetornoBase(
+                                            diarioId = diarioId,
+                                            saidaRetornoBase = diario?.saidaRetornoBase,
+                                            chegadaBase = diario?.chegadaBase,
+                                            observacaoRetornoBase = diario?.observacaoRetornoBase.orEmpty()
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    enabled = destinoSelecionado.isNotBlank() &&
+                                            saidaRegistrada &&
+                                            chegadaRegistrada
+                                ) {
+                                    Text("Concluir etapa 6")
+                                }
                             }
                         }
                     }
@@ -1165,6 +1500,41 @@ fun DiarioEtapasScreen(
                 }
             }
         }
+    }
+    if (servicoPendenteExclusao != null) {
+        AlertDialog(
+            onDismissRequest = {
+                servicoPendenteExclusao = null
+            },
+            title = {
+                Text("Excluir serviço")
+            },
+            text = {
+                Text("Tem certeza que deseja apagar este serviço?")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        servicoPendenteExclusao?.let { servico ->
+                            viewModel.excluirServico(servico)
+                        }
+                        servicoSelecionadoParaExcluir = null
+                        servicoPendenteExclusao = null
+                    }
+                ) {
+                    Text("Apagar")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        servicoPendenteExclusao = null
+                    }
+                ) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }
 
@@ -1430,4 +1800,14 @@ private fun filtrarEntradaDecimal(valor: String): String? {
     if (separadores > 1) return null
 
     return valor
+}
+
+private fun formatarDecimalTruncado(valor: Double): String {
+    val truncado = kotlin.math.floor(valor * 100.0) / 100.0
+    return String.format(Locale.US, "%.2f", truncado).replace(".", ",")
+}
+
+private fun horaAtualFormatada(): String {
+    return java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        .format(java.util.Date())
 }

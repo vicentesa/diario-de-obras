@@ -16,7 +16,7 @@ import androidx.room.RoomDatabase
         ServicoAreaEntity::class,
         SubservicoEntity::class
     ],
-    version = 8,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
