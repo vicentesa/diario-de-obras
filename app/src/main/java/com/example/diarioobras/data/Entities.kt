@@ -76,6 +76,9 @@ data class DiarioEntity(
     val chegadaBase: String? = null,
     val observacaoRetornoBase: String = "",
     val retornoBaseConcluido: Boolean = false,
+    val fotoHospedagemPath: String = "",
+    val enderecoHospedagem: String = "",
+    val obraDestinoId: Long? = null,
 
     // Etapa 7 - Fechamento do D.O.
     val observacaoFinalDo: String = "",
@@ -149,8 +152,9 @@ data class DesvioItemEntity(
     val diarioId: Long,
     val codigo: String,
     val descricao: String,
-    val inicio: String? = null,
-    val fim: String? = null
+    val inicio: String = "",
+    val fim: String = "",
+    val observacao: String = ""
 )
 
 @Entity(

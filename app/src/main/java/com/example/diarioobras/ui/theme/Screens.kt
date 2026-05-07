@@ -765,24 +765,7 @@ fun DiarioScreen(
                                 Text("Informar desvio")
                             }
 
-                            DropdownMenu(
-                                expanded = menuDesvioExpandido,
-                                onDismissRequest = { menuDesvioExpandido = false }
-                            ) {
-                                LISTA_DESVIOS.forEach { (codigo, descricao) ->
-                                    DropdownMenuItem(
-                                        text = { Text("$codigo - $descricao") },
-                                        onClick = {
-                                            viewModel.adicionarDesvio(
-                                                diarioId = diarioId,
-                                                codigo = codigo,
-                                                descricao = descricao
-                                            )
-                                            menuDesvioExpandido = false
-                                        }
-                                    )
-                                }
-                            }
+
                         }
                     }
                 }
@@ -1085,18 +1068,6 @@ fun DiarioScreen(
                             )
                         }
 
-                        OutlinedButton(
-                            onClick = { menuLocalCarregamentoExpandido = true },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                if (localCarregamentoSelecionado.isBlank()) {
-                                    "Selecionar local de carregamento"
-                                } else {
-                                    localCarregamentoSelecionado
-                                }
-                            )
-                        }
 
                         DropdownMenu(
                             expanded = menuLocalCarregamentoExpandido,

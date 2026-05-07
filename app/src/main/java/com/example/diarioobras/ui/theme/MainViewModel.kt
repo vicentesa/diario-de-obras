@@ -562,6 +562,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
                 retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
                 observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
+                enderecoHospedagem = diarioAtual.enderecoHospedagem,
                 diarioFechado = diarioAtual.diarioFechado
             )
         }
@@ -578,6 +580,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
                 retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
                 observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
+                enderecoHospedagem = diarioAtual.enderecoHospedagem,
                 diarioFechado = diarioAtual.diarioFechado
             )
         }
@@ -598,6 +602,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 observacaoRetornoBase = observacaoRetornoBase,
                 retornoBaseConcluido = true,
                 observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
+                enderecoHospedagem = diarioAtual.enderecoHospedagem,
                 diarioFechado = diarioAtual.diarioFechado
             )
 
@@ -616,6 +622,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun marcarInicioDesvio(id: Long) {
+        viewModelScope.launch {
+            dao.atualizarInicioDesvio(id, horaAtual())
+        }
+    }
+
+    fun marcarFimDesvio(id: Long) {
+        viewModelScope.launch {
+            dao.atualizarFimDesvio(id, horaAtual())
+        }
+    }
+
+    fun atualizarObservacaoDesvio(id: Long, texto: String) {
+        viewModelScope.launch {
+            dao.atualizarObservacaoDesvio(id, texto)
+        }
+    }
+
     fun concluirFechamentoDo(
         diarioId: Long,
         observacaoFinalDo: String
@@ -630,6 +654,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
                 retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
                 observacaoFinalDo = observacaoFinalDo,
+                fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
+                enderecoHospedagem = diarioAtual.enderecoHospedagem,
                 diarioFechado = true
             )
 
@@ -660,17 +686,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         dao.listarDesvios(diarioId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun adicionarDesvio(
+    fun adicionarDesvioCompleto(
         diarioId: Long,
         codigo: String,
-        descricao: String
+        descricao: String,
+        inicio: String,
+        fim: String,
+        observacao: String
     ) {
         viewModelScope.launch {
             dao.inserirDesvio(
                 DesvioItemEntity(
                     diarioId = diarioId,
                     codigo = codigo,
-                    descricao = descricao
+                    descricao = descricao,
+                    inicio = inicio,
+                    fim = fim,
+                    observacao = observacao
                 )
             )
         }
@@ -694,7 +726,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         novoFim: String?
     ) {
         viewModelScope.launch {
-            dao.atualizarDesvio(item.copy(inicio = novoInicio, fim = novoFim))
+            dao.atualizarDesvio(
+                item.copy(
+                    inicio = novoInicio.orEmpty(),
+                    fim = novoFim.orEmpty()
+                )
+            )
         }
     }
 
@@ -830,6 +867,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         diarioFechado: Boolean
     ) {
         viewModelScope.launch {
+            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
             dao.atualizarRetornoEFechamentoDo(
                 diarioId = diarioId,
                 saidaRetornoBase = saidaRetornoBase,
@@ -837,7 +875,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 observacaoRetornoBase = observacaoRetornoBase,
                 retornoBaseConcluido = retornoBaseConcluido,
                 observacaoFinalDo = observacaoFinalDo,
+                fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
+                enderecoHospedagem = diarioAtual.enderecoHospedagem,
                 diarioFechado = diarioFechado
+            )
+        }
+    }
+
+    fun salvarFotoHospedagem(
+        diarioId: Long,
+        caminhoFoto: String,
+        endereco: String
+    ) {
+        viewModelScope.launch {
+            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+
+            dao.atualizarRetornoEFechamentoDo(
+                diarioId = diarioId,
+                saidaRetornoBase = diarioAtual.saidaRetornoBase,
+                chegadaBase = diarioAtual.chegadaBase,
+                observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
+                retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
+                observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                fotoHospedagemPath = caminhoFoto,
+                enderecoHospedagem = endereco,
+                diarioFechado = diarioAtual.diarioFechado
             )
         }
     }
@@ -992,5 +1054,111 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun gerarTextoRelatorioPorId(diarioId: Long): String? {
         val relatorio = montarDiarioParaRelatorio(diarioId) ?: return null
         return gerarTextoRelatorio(relatorio)
+    }
+
+    fun concluirEtapa6ECriarDiarioDestino(
+        diarioOrigemId: Long,
+        obraDestinoId: Long,
+        contratoDestinoDescricao: String,
+        onNovoDiarioCriado: (Long) -> Unit
+    ) {
+        viewModelScope.launch {
+
+            val diarioOrigem = dao.buscarDiarioPorId(diarioOrigemId) ?: return@launch
+
+            val agora = horaAtual()
+
+            // 1. Criar novo diário
+            val novoDiarioId = dao.inserirDiario(
+                DiarioEntity(
+                    obraId = obraDestinoId,
+                    data = diarioOrigem.data,
+
+                    encarregado = diarioOrigem.encarregado,
+                    equipe = diarioOrigem.equipe,
+
+                    veiculo = diarioOrigem.veiculo,
+                    equipamentosAuxiliares = diarioOrigem.equipamentosAuxiliares,
+
+                    localCarregamento = diarioOrigem.localCarregamento,
+                    pesoLiquidoTon = diarioOrigem.pesoLiquidoTon,
+                    fotoTicketUri = diarioOrigem.fotoTicketUri,
+
+                    statusEquipe = "CONCLUIDA",
+                    statusEquipamento = "CONCLUIDA",
+                    statusCarregamento = "CONCLUIDA",
+                    statusServicos = "EM_ANDAMENTO",
+
+                    etapaAtual = 4,
+
+                    sincronizado = false
+                )
+            )
+            onNovoDiarioCriado(novoDiarioId)
+
+            // 2. Criar deslocamentos padrão (1 a 9)
+            val deslocamentosPadrao = listOf(
+                "Batendo ponto na entrada",
+                "Organizando materiais e ferramentas (Manhã)",
+                "A caminho da Usina",
+                "Chegada na Usina",
+                "Carregando asfalto",
+                "Término do carregamento",
+                "Pesagem do caminhão carregado",
+                "Saída da Usina para o trecho",
+                "Chegada no trecho"
+            )
+
+            deslocamentosPadrao.forEachIndexed { index, titulo ->
+                dao.inserirDeslocamento(
+                    DeslocamentoItemEntity(
+                        diarioId = novoDiarioId,
+                        ordem = index + 1,
+                        titulo = titulo,
+                        inicio = if (index == 8) diarioOrigem.chegadaBase else "", // 👈 ETAPA 4
+                        fim = ""
+                    )
+                )
+            }
+
+            // 3. Copiar carregamentos
+            //val carregamentos = dao.buscarCarregamentosPorDiario(diarioOrigemId)
+
+            //carregamentos.forEach {
+            //    dao.inserirCarregamento(
+            //        it.copy(
+            //            id = 0,
+            //            diarioId = novoDiarioId
+            //        )
+            //    )
+            //}
+
+            // 4. (opcional futuro) copiar equipe detalhada, serviços, etc.
+
+            // 5. Concluir etapa 6 no diário original
+            dao.atualizarRetornoEFechamentoDo(
+                diarioId = diarioOrigemId,
+                saidaRetornoBase = diarioOrigem.saidaRetornoBase,
+                chegadaBase = diarioOrigem.chegadaBase,
+                observacaoRetornoBase = "Continua no diário do contrato: $contratoDestinoDescricao",
+                retornoBaseConcluido = true,
+                observacaoFinalDo = diarioOrigem.observacaoFinalDo,
+                fotoHospedagemPath = diarioOrigem.fotoHospedagemPath,
+                enderecoHospedagem = diarioOrigem.enderecoHospedagem,
+                diarioFechado = diarioOrigem.diarioFechado
+            )
+            dao.atualizarStatusEtapasDiario(
+                diarioId = diarioOrigemId,
+                etapaAtual = 7,
+                statusEquipe = diarioOrigem.statusEquipe,
+                statusEquipamento = diarioOrigem.statusEquipamento,
+                statusCarregamento = diarioOrigem.statusCarregamento,
+                statusServicos = diarioOrigem.statusServicos,
+                statusFechamentoServicos = diarioOrigem.statusFechamentoServicos,
+                statusRetornoBase = "CONCLUIDA",
+                statusFechamentoDo = "DISPONIVEL",
+                diarioFechado = diarioOrigem.diarioFechado
+            )
+        }
     }
 }

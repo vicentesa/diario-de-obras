@@ -55,18 +55,68 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.foundation.ExperimentalFoundationApi
 
+
 import com.example.diarioobras.data.ServicoEntity
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.*
+import coil.compose.rememberAsyncImagePainter
+import androidx.compose.foundation.Image
+
+import android.location.Address
+import android.os.Build
+import com.google.android.gms.location.Priority
+
+import com.example.diarioobras.data.DesvioItemEntity
+import com.example.diarioobras.ui.MainViewModel
+import androidx.compose.foundation.layout.Row
+
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DiarioEtapasScreen(
     diarioId: Long,
     viewModel: MainViewModel,
-    onAbrirServico: (Long) -> Unit
+    onAbrirServico: (Long) -> Unit,
+    onAbrirDiario: (Long) -> Unit
 ) {
-    val context = LocalContext.current
+
+    val tiposDesvio: List<Pair<String, String>> = listOf(
+        "P1" to "Refeição / Intervalo",
+        "P2" to "Chuva",
+        "P3" to "Quebra veículo",
+        "P4" to "Quebra gerador",
+        "P5" to "Quebra martelete",
+        "P6" to "Quebra compactador de percussão",
+        "P7" to "Quebra placa vibratória",
+        "P8" to "Falta de material - insumos",
+        "P9" to "Falta de material hidráulico",
+        "P10" to "Falta de ferramentas",
+        "P11" to "Aguardando fila (usina)",
+        "P12" to "Carregamento asfalto",
+        "P13" to "Deslocamento",
+        "P14" to "Quebra equipamento de escavação",
+        "P15" to "Quebra rompedor hidráulico",
+        "P16" to "Interferência rede de água",
+        "P17" to "Interferência rede pluvial",
+        "P18" to "Interferência rede elétrica/dados",
+        "P19" to "Aguardando fiscalização",
+        "P20" to "Solicitação órgão público",
+        "P21" to "Encontrado rocha",
+        "P22" to "Solicitação setor segurança",
+        "P23" to "Falta de EPI",
+        "P24" to "Falta de EPC",
+        "P25" to "Sinalização de via",
+        "P30" to "Falta de colaborador",
+        "P31" to "Aguardando liberação",
+        "P34" to "Programação insuficiente",
+        "P35" to "Sem atividade",
+        "P38" to "DDS",
+        "P39" to "Treinamento",
+        "P45" to "Limpeza do canteiro",
+        "T1" to "Trabalhando",
+        "T2" to "Retrabalho / garantia",
+        "T3" to "Outro serviço já apontado"
+    )
 
     var obra by remember { mutableStateOf<ObraEntity?>(null) }
     var etapaExpandida by remember(diarioId) { mutableStateOf(1) }
@@ -83,6 +133,7 @@ fun DiarioEtapasScreen(
     val desvios by desviosFlow.collectAsStateWithLifecycle()
     val deslocamentos by deslocamentosFlow.collectAsStateWithLifecycle()
     val carregamentos by carregamentosFlow.collectAsStateWithLifecycle()
+    val obras by viewModel.obras.collectAsStateWithLifecycle()
 
     var desviosExpandido by remember { mutableStateOf(false) }
 
@@ -92,6 +143,9 @@ fun DiarioEtapasScreen(
 
     var menuEquipeExpandido by remember { mutableStateOf(false) }
     var equipeSelecionada by remember(diarioId) { mutableStateOf(setOf<String>()) }
+
+
+    var obraDestinoIdSelecionada by remember(diarioId) { mutableStateOf<Long?>(null) }
 
     // Etapa 2
     var menuVeiculoExpandido by remember { mutableStateOf(false) }
@@ -139,8 +193,125 @@ fun DiarioEtapasScreen(
     var menuProximoDestinoExpandido by remember { mutableStateOf(false) }
     var proximoDestinoSelecionado by remember(diarioId) { mutableStateOf("") }
 
-    val fusedLocationClient = remember(context) {
+    val context = LocalContext.current
+    val fusedLocationClient = remember {
         LocationServices.getFusedLocationProviderClient(context)
+    }
+
+    var fotoHospedagemUriTemporaria by remember(diarioId) { mutableStateOf<Uri?>(null) }
+    var versaoPreviewHospedagem by remember(diarioId) { mutableStateOf(0) }
+
+    var menuOutroContratoExpandido by remember { mutableStateOf(false) }
+    var outroContratoSelecionado by remember(diarioId) { mutableStateOf("") }
+
+    var menuTipoDesvioExpandido by remember { mutableStateOf(false) }
+
+    val hospedagemCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            versaoPreviewHospedagem++
+
+            val uriFoto = fotoHospedagemUriTemporaria?.toString().orEmpty()
+
+            if (
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                fusedLocationClient.lastLocation
+                    .addOnSuccessListener { location ->
+                        if (location != null) {
+                            val geocoder = Geocoder(context, Locale("pt", "BR"))
+
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                geocoder.getFromLocation(
+                                    location.latitude,
+                                    location.longitude,
+                                    1,
+                                    object : Geocoder.GeocodeListener {
+                                        override fun onGeocode(addresses: List<Address>) {
+                                            val address = addresses.firstOrNull()
+                                            val rua = address?.thoroughfare.orEmpty()
+                                            val numero = address?.subThoroughfare.orEmpty()
+
+                                            val endereco = if (rua.isNotBlank() || numero.isNotBlank()) {
+                                                listOf(rua, numero)
+                                                    .filter { it.isNotBlank() }
+                                                    .joinToString(", ")
+                                            } else {
+                                                address?.getAddressLine(0).orEmpty()
+                                            }
+
+                                            viewModel.salvarFotoHospedagem(
+                                                diarioId = diarioId,
+                                                caminhoFoto = uriFoto,
+                                                endereco = endereco
+                                            )
+                                        }
+
+                                        override fun onError(errorMessage: String?) {
+                                            viewModel.salvarFotoHospedagem(
+                                                diarioId = diarioId,
+                                                caminhoFoto = uriFoto,
+                                                endereco = ""
+                                            )
+                                        }
+                                    }
+                                )
+                            } else {
+                                val addresses = try {
+                                    geocoder.getFromLocation(
+                                        location.latitude,
+                                        location.longitude,
+                                        1
+                                    )
+                                } catch (e: Exception) {
+                                    null
+                                }
+
+                                val address = addresses?.firstOrNull()
+                                val rua = address?.thoroughfare.orEmpty()
+                                val numero = address?.subThoroughfare.orEmpty()
+
+                                val endereco = if (rua.isNotBlank() || numero.isNotBlank()) {
+                                    listOf(rua, numero)
+                                        .filter { it.isNotBlank() }
+                                        .joinToString(", ")
+                                } else {
+                                    address?.getAddressLine(0).orEmpty()
+                                }
+
+                                viewModel.salvarFotoHospedagem(
+                                    diarioId = diarioId,
+                                    caminhoFoto = uriFoto,
+                                    endereco = endereco
+                                )
+                            }
+                        } else {
+                            fusedLocationClient.getCurrentLocation(
+                                Priority.PRIORITY_HIGH_ACCURACY,
+                                null
+                            ).addOnSuccessListener { currentLocation ->
+                                val endereco = ""
+
+                                viewModel.salvarFotoHospedagem(
+                                    diarioId = diarioId,
+                                    caminhoFoto = uriFoto,
+                                    endereco = endereco
+                                )
+                            }
+                        }
+                    }
+            } else {
+                viewModel.salvarFotoHospedagem(
+                    diarioId = diarioId,
+                    caminhoFoto = uriFoto,
+                    endereco = ""
+                )
+            }
+        }
     }
 
     val areasPorServico = remember { mutableStateMapOf<Long, Double>() }
@@ -284,6 +455,16 @@ fun DiarioEtapasScreen(
             val novaUri = criarUriParaFotoEtapa(context)
             fotoTicketEtapa3Uri = novaUri
             ticketCameraLauncher.launch(novaUri)
+        }
+    }
+
+    val hospedagemCameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val novaUri = criarUriParaFotoDiario(context)
+            fotoHospedagemUriTemporaria = novaUri
+            hospedagemCameraLauncher.launch(novaUri)
         }
     }
 
@@ -1305,24 +1486,30 @@ fun DiarioEtapasScreen(
                                 diario?.proximoDestino.orEmpty()
                             }
 
-                        val labelSaida = when (destinoSelecionado) {
-                            "Retorno à base" -> "Saída para retorno"
-                            "Atendimento a outro Contrato" -> "Saída para outro contrato"
-                            "Para hospedagem" -> "Saída para hospedagem"
+                        val atendimentoOutroContrato =
+                            destinoSelecionado.equals("Atendimento a outro Contrato", ignoreCase = true)
+
+                        val paraHospedagem =
+                            destinoSelecionado.equals("Para hospedagem", ignoreCase = true)
+
+                        val labelSaida = when {
+                            destinoSelecionado.equals("Retorno à base", ignoreCase = true) -> "Saída para retorno"
+                            atendimentoOutroContrato -> "Saída para outro contrato"
+                            paraHospedagem -> "Saída para hospedagem"
                             else -> "Saída"
                         }
 
-                        val labelChegada = when (destinoSelecionado) {
-                            "Retorno à base" -> "Chegada à base"
-                            "Atendimento a outro Contrato" -> "Chegada ao outro contrato"
-                            "Para hospedagem" -> "Chegada à hospedagem"
+                        val labelChegada = when {
+                            destinoSelecionado.equals("Retorno à base", ignoreCase = true) -> "Chegada à base"
+                            atendimentoOutroContrato -> "Chegada ao outro contrato"
+                            paraHospedagem -> "Chegada à hospedagem"
                             else -> "Chegada ao destino"
                         }
 
-                        val mensagemConclusao = when (destinoSelecionado) {
-                            "Retorno à base" -> "Retorno à base concluído."
-                            "Atendimento a outro Contrato" -> "Deslocamento para outro contrato concluído."
-                            "Para hospedagem" -> "Deslocamento para hospedagem concluído."
+                        val mensagemConclusao = when {
+                            destinoSelecionado.equals("Retorno à base", ignoreCase = true) -> "Retorno à base concluído."
+                            atendimentoOutroContrato -> "Deslocamento para outro contrato concluído."
+                            paraHospedagem -> "Deslocamento para hospedagem concluído."
                             else -> "Deslocamento concluído."
                         }
 
@@ -1338,6 +1525,60 @@ fun DiarioEtapasScreen(
                                 )
 
                                 Spacer(modifier = Modifier.height(12.dp))
+                            }
+
+                            if (atendimentoOutroContrato) {
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = "Contrato de destino",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                val outrasObras = obras.filter { it.id != diario?.obraId }
+
+                                if (outrasObras.isEmpty()) {
+                                    Text(
+                                        text = "Nenhum outro contrato cadastrado.",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                } else {
+                                    OutlinedButton(
+                                        onClick = { menuOutroContratoExpandido = true },
+                                        enabled = !etapaConcluida,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            if (outroContratoSelecionado.isBlank()) {
+                                                "Selecionar contrato de destino"
+                                            } else {
+                                                outroContratoSelecionado
+                                            }
+                                        )
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = menuOutroContratoExpandido && !etapaConcluida,
+                                        onDismissRequest = { menuOutroContratoExpandido = false }
+                                    ) {
+                                        outrasObras.forEach { obra ->
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text("${obra.nome} - ${obra.contrato}")
+                                                },
+                                                onClick = {
+                                                    outroContratoSelecionado = "${obra.nome} - ${obra.contrato}"
+                                                    obraDestinoIdSelecionada = obra.id
+                                                    menuOutroContratoExpandido = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
                             }
 
                             Text(
@@ -1378,6 +1619,72 @@ fun DiarioEtapasScreen(
                                 Text(if (chegadaRegistrada) "Atualizar chegada" else "Marcar chegada")
                             }
 
+                            if (paraHospedagem) {
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Text(
+                                    text = "Foto da hospedagem",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Button(
+                                    onClick = {
+                                        if (
+                                            ContextCompat.checkSelfPermission(
+                                                context,
+                                                Manifest.permission.CAMERA
+                                            ) == PackageManager.PERMISSION_GRANTED
+                                        ) {
+                                            val novaUri = criarUriParaFotoDiario(context)
+                                            fotoHospedagemUriTemporaria = novaUri
+                                            hospedagemCameraLauncher.launch(novaUri)
+                                        } else {
+                                            hospedagemCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                        }
+                                    },
+                                    enabled = !etapaConcluida,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        if (diario?.fotoHospedagemPath.orEmpty().isBlank()) {
+                                            "Tirar foto da hospedagem"
+                                        } else {
+                                            "Trocar foto da hospedagem"
+                                        }
+                                    )
+                                }
+
+                                if (diario?.fotoHospedagemPath.orEmpty().isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    AsyncImage(
+                                        model = "${diario?.fotoHospedagemPath}#${versaoPreviewHospedagem}",
+                                        contentDescription = "Foto da hospedagem",
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(120.dp),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
+
+                                if (diario?.enderecoHospedagem?.isNotBlank() == true) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Text("Endereço: ${diario?.enderecoHospedagem}")
+                                }
+                            }
+
+                            if (diario?.observacaoRetornoBase.orEmpty().isNotBlank()) {
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Text(
+                                    text = diario?.observacaoRetornoBase.orEmpty(),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+
                             Spacer(modifier = Modifier.height(16.dp))
 
                             if (etapaConcluida) {
@@ -1388,17 +1695,44 @@ fun DiarioEtapasScreen(
                             } else {
                                 Button(
                                     onClick = {
-                                        viewModel.concluirRetornoBase(
-                                            diarioId = diarioId,
-                                            saidaRetornoBase = diario?.saidaRetornoBase,
-                                            chegadaBase = diario?.chegadaBase,
-                                            observacaoRetornoBase = diario?.observacaoRetornoBase.orEmpty()
-                                        )
+                                        if (
+                                            atendimentoOutroContrato &&
+                                            obraDestinoIdSelecionada != null
+                                        ) {
+                                            viewModel.concluirEtapa6ECriarDiarioDestino(
+                                                diarioOrigemId = diarioId,
+                                                obraDestinoId = obraDestinoIdSelecionada!!,
+                                                contratoDestinoDescricao = outroContratoSelecionado
+                                            ) { novoDiarioId ->
+                                                android.widget.Toast.makeText(
+                                                    context,
+                                                    "Novo Diário de Obras criado para o contrato selecionado.",
+                                                    android.widget.Toast.LENGTH_LONG
+                                                ).show()
+
+                                                onAbrirDiario(novoDiarioId)
+                                            }
+                                        } else {
+                                            viewModel.concluirRetornoBase(
+                                                diarioId = diarioId,
+                                                saidaRetornoBase = diario?.saidaRetornoBase,
+                                                chegadaBase = diario?.chegadaBase,
+                                                observacaoRetornoBase = diario?.observacaoRetornoBase.orEmpty()
+                                            )
+                                        }
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     enabled = destinoSelecionado.isNotBlank() &&
                                             saidaRegistrada &&
-                                            chegadaRegistrada
+                                            chegadaRegistrada &&
+                                            (
+                                                    !paraHospedagem ||
+                                                            diario?.fotoHospedagemPath.orEmpty().isNotBlank()
+                                                    ) &&
+                                            (
+                                                    !atendimentoOutroContrato ||
+                                                            obraDestinoIdSelecionada != null
+                                                    )
                                 ) {
                                     Text("Concluir etapa 6")
                                 }
@@ -1409,23 +1743,20 @@ fun DiarioEtapasScreen(
 
                 DesviosCard(
                     quantidadeDesvios = desvios.size,
-                    descricoes = desvios.map { "${it.codigo} - ${it.descricao}" },
-                    bloqueado = diario?.diarioFechado == true,
+                    desvios = desvios,
+                    tiposDesvio = tiposDesvio,
+                    diarioId = diarioId,
+                    viewModel = viewModel,
+                    bloqueado = false,
                     expandido = desviosExpandido,
                     onClick = {
                         desviosExpandido = !desviosExpandido
-                        if (desviosExpandido) {
+                        if (!desviosExpandido) {
                             etapaExpandida = 0
                         }
-                    },
-                    onAdicionarDesvio = {
-                        viewModel.adicionarDesvio(
-                            diarioId = diarioId,
-                            codigo = "D01",
-                            descricao = "Desvio teste"
-                        )
                     }
                 )
+
 
                 EtapaCard(
                     numero = 7,
@@ -1593,75 +1924,412 @@ private fun EtapaCard(
     }
 }
 
+
 @Composable
-private fun DesviosCard(
+fun DesviosCard(
     quantidadeDesvios: Int,
-    descricoes: List<String>,
+    desvios: List<DesvioItemEntity>,
+    tiposDesvio: List<Pair<String, String>>,
+    diarioId: Long,
+    viewModel: MainViewModel,
     bloqueado: Boolean,
     expandido: Boolean,
-    onClick: () -> Unit,
-    onAdicionarDesvio: () -> Unit
+    onClick: () -> Unit
 ) {
-    val corFundo = if (quantidadeDesvios > 0) {
-        Color(0xFFFFE0B2)
-    } else {
-        Color(0xFFF2F2F2)
+    var menuTipoDesvioExpandido by remember { mutableStateOf(false) }
+    var codigoEmCadastro by remember { mutableStateOf("") }
+    var descricaoEmCadastro by remember { mutableStateOf("") }
+    var inicioEmCadastro by remember { mutableStateOf("") }
+    var fimEmCadastro by remember { mutableStateOf("") }
+    var observacaoEmCadastro by remember { mutableStateOf("") }
+    var desvioExpandidoId by remember { mutableStateOf<Long?>(null) }
+    val context = LocalContext.current
+
+    fun abrirSeletorHora(
+        valorAtual: String,
+        onHoraSelecionada: (String) -> Unit
+    ) {
+        val partes = valorAtual.split(":")
+        val horaInicial = partes.getOrNull(0)?.toIntOrNull() ?: 8
+        val minutoInicial = partes.getOrNull(1)?.toIntOrNull() ?: 0
+
+        android.app.TimePickerDialog(
+            context,
+            { _, hora, minuto ->
+                onHoraSelecionada("%02d:%02d".format(hora, minuto))
+            },
+            horaInicial,
+            minutoInicial,
+            true
+        ).show()
     }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp)
+            .padding(vertical = 8.dp)
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = corFundo)
+
+        colors = CardDefaults.cardColors(
+            containerColor =
+                if (quantidadeDesvios > 0) {
+                    Color(0xFFFFE8C2)
+                } else {
+                    MaterialTheme.colorScheme.surface
+                }
+        )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+
             Text(
                 text = "Desvios",
                 style = MaterialTheme.typography.titleMedium
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = if (quantidadeDesvios == 0) {
+                if (quantidadeDesvios == 0) {
                     "Nenhum desvio registrado."
                 } else {
-                    "Quantidade de desvios: $quantidadeDesvios"
-                },
-                style = MaterialTheme.typography.bodyMedium
+                    "Desvios registrados: $quantidadeDesvios"
+                }
             )
 
             if (expandido) {
                 Spacer(modifier = Modifier.height(12.dp))
 
-                if (bloqueado) {
-                    Text(
-                        text = "Diário encerrado. Desvios bloqueados para edição.",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                } else {
-                    Button(
-                        onClick = onAdicionarDesvio,
-                        modifier = Modifier.fillMaxWidth()
+                desvios.forEach { desvio ->
+                    val estaExpandido = desvioExpandidoId == desvio.id
+
+                    val corCard = when {
+                        desvio.inicio.isBlank() -> Color(0xFFF1F1F1)
+                        desvio.fim.isBlank() -> Color(0xFFFFE8C2)
+                        else -> Color(0xFFDDF5DD)
+                    }
+
+                    var inicioEditado by remember(desvio.id, desvio.inicio) {
+                        mutableStateOf(desvio.inicio)
+                    }
+
+                    var fimEditado by remember(desvio.id, desvio.fim) {
+                        mutableStateOf(desvio.fim)
+                    }
+
+                    var observacaoEditada by remember(desvio.id, desvio.observacao) {
+                        mutableStateOf(desvio.observacao)
+                    }
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp)
+                            .clickable {
+                                desvioExpandidoId = if (estaExpandido) null else desvio.id
+                            },
+                        colors = CardDefaults.cardColors(containerColor = corCard)
                     ) {
-                        Text("Adicionar desvio")
+                        Column(modifier = Modifier.padding(12.dp)) {
+
+                            Text(
+                                text = "${desvio.codigo} - ${desvio.descricao}",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Text(
+                                text = "Horário: ${
+                                    when {
+                                        desvio.inicio.isNotBlank() && desvio.fim.isNotBlank() ->
+                                            "${desvio.inicio} às ${desvio.fim}"
+
+                                        desvio.inicio.isNotBlank() ->
+                                            "Início ${desvio.inicio}"
+
+                                        else ->
+                                            "Não iniciado"
+                                    }
+                                }",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+
+                            if (desvio.observacao.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Obs.: ${desvio.observacao}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+
+                            if (estaExpandido) {
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Text("Início: ${inicioEditado.ifBlank { "--:--" }}")
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            inicioEditado = horaAtualFormatada()
+                                        },
+                                        enabled = !bloqueado,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Marcar início")
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            abrirSeletorHora(inicioEditado) { hora ->
+                                                inicioEditado = hora
+                                            }
+                                        },
+                                        enabled = !bloqueado,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Editar início")
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Text("Fim: ${fimEditado.ifBlank { "--:--" }}")
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            fimEditado = horaAtualFormatada()
+                                        },
+                                        enabled = !bloqueado,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Marcar fim")
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            abrirSeletorHora(fimEditado) { hora ->
+                                                fimEditado = hora
+                                            }
+                                        },
+                                        enabled = !bloqueado,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Editar fim")
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                OutlinedTextField(
+                                    value = observacaoEditada,
+                                    onValueChange = { observacaoEditada = it },
+                                    label = { Text("Observação (opcional)") },
+                                    enabled = !bloqueado,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Button(
+                                    onClick = {
+                                        viewModel.atualizarHorarioDesvio(
+                                            item = desvio,
+                                            novoInicio = inicioEditado,
+                                            novoFim = fimEditado
+                                        )
+                                        viewModel.atualizarObservacaoDesvio(
+                                            id = desvio.id,
+                                            texto = observacaoEditada
+                                        )
+                                        desvioExpandidoId = null
+                                    },
+                                    enabled = !bloqueado,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Salvar alterações")
+                                }
+                            }
+                        }
                     }
                 }
 
-                if (quantidadeDesvios > 0) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Button(
+                    onClick = {
+                        menuTipoDesvioExpandido = true
+                    },
+                    enabled = !bloqueado && codigoEmCadastro.isBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Adicionar desvio")
+                }
+
+                DropdownMenu(
+                    expanded = menuTipoDesvioExpandido,
+                    onDismissRequest = { menuTipoDesvioExpandido = false }
+                ) {
+                    tiposDesvio.forEach { item ->
+                        val codigo = item.first
+                        val descricao = item.second
+
+                        DropdownMenuItem(
+                            text = { Text("$codigo - $descricao") },
+                            onClick = {
+                                codigoEmCadastro = codigo
+                                descricaoEmCadastro = descricao
+                                inicioEmCadastro = ""
+                                fimEmCadastro = ""
+                                observacaoEmCadastro = ""
+                                menuTipoDesvioExpandido = false
+                            }
+                        )
+                    }
+                }
+
+                if (codigoEmCadastro.isNotBlank()) {
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    descricoes.forEach { descricao ->
-                        Text(
-                            text = "• $descricao",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+
+                            Text(
+                                text = "$codigoEmCadastro - $descricaoEmCadastro",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Text("Início: ${inicioEmCadastro.ifBlank { "--:--" }}")
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        inicioEmCadastro = horaAtualFormatada()
+                                    },
+                                    enabled = !bloqueado,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Marcar início")
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        abrirSeletorHora(inicioEmCadastro) { hora ->
+                                            inicioEmCadastro = hora
+                                        }
+                                    },
+                                    enabled = !bloqueado,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Editar início")
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Text("Fim: ${fimEmCadastro.ifBlank { "--:--" }}")
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        fimEmCadastro = horaAtualFormatada()
+                                    },
+                                    enabled = !bloqueado,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Marcar fim")
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        abrirSeletorHora(fimEmCadastro) { hora ->
+                                            fimEmCadastro = hora
+                                        }
+                                    },
+                                    enabled = !bloqueado,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Editar fim")
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = observacaoEmCadastro,
+                                onValueChange = { observacaoEmCadastro = it },
+                                label = { Text("Observação (opcional)") },
+                                enabled = !bloqueado,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Button(
+                                onClick = {
+                                    viewModel.adicionarDesvioCompleto(
+                                        diarioId = diarioId,
+                                        codigo = codigoEmCadastro,
+                                        descricao = descricaoEmCadastro,
+                                        inicio = inicioEmCadastro,
+                                        fim = fimEmCadastro,
+                                        observacao = observacaoEmCadastro
+                                    )
+
+                                    codigoEmCadastro = ""
+                                    descricaoEmCadastro = ""
+                                    inicioEmCadastro = ""
+                                    fimEmCadastro = ""
+                                    observacaoEmCadastro = ""
+                                },
+                                enabled = !bloqueado &&
+                                        inicioEmCadastro.isNotBlank() &&
+                                        fimEmCadastro.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Confirmar desvio")
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedButton(
+                                onClick = {
+                                    codigoEmCadastro = ""
+                                    descricaoEmCadastro = ""
+                                    inicioEmCadastro = ""
+                                    fimEmCadastro = ""
+                                    observacaoEmCadastro = ""
+                                },
+                                enabled = !bloqueado,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Cancelar")
+                            }
+                        }
                     }
                 }
             }
@@ -1810,4 +2478,15 @@ private fun formatarDecimalTruncado(valor: Double): String {
 private fun horaAtualFormatada(): String {
     return java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
         .format(java.util.Date())
+}
+
+private fun criarUriParaFotoDiario(context: Context): Uri {
+    val imagesDir = File(context.cacheDir, "images").apply { mkdirs() }
+    val arquivo = File(imagesDir, "foto_diario_${System.currentTimeMillis()}.jpg")
+
+    return androidx.core.content.FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        arquivo
+    )
 }

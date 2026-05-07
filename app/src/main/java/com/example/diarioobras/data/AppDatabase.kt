@@ -16,10 +16,11 @@ import androidx.room.RoomDatabase
         ServicoAreaEntity::class,
         SubservicoEntity::class
     ],
-    version = 10,
+    version = 16, // 👈 aumentei a versão
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
+
     abstract fun obrasDao(): ObrasDao
 
     companion object {
@@ -33,8 +34,9 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "diario_obras.db"
                 )
-                    .fallbackToDestructiveMigration()
+                    .fallbackToDestructiveMigration() // 👈 mantém
                     .build()
+
                 INSTANCE = instance
                 instance
             }

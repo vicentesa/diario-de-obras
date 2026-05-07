@@ -65,8 +65,8 @@ interface ObrasDao {
     suspend fun excluirCarregamento(item: CarregamentoItemEntity)
 
     @Insert
-    suspend fun inserirDesvio(item: DesvioItemEntity)
-
+    //suspend fun inserirDesvio(item: DesvioItemEntity)
+    suspend fun inserirDesvio(desvio: DesvioItemEntity): Long
     @Query("SELECT * FROM desvios WHERE diarioId = :diarioId ORDER BY id ASC")
     fun listarDesvios(diarioId: Long): Flow<List<DesvioItemEntity>>
 
@@ -188,6 +188,8 @@ interface ObrasDao {
             observacaoRetornoBase = :observacaoRetornoBase,
             retornoBaseConcluido = :retornoBaseConcluido,
             observacaoFinalDo = :observacaoFinalDo,
+            fotoHospedagemPath = :fotoHospedagemPath,
+            enderecoHospedagem = :enderecoHospedagem,
             diarioFechado = :diarioFechado
         WHERE id = :diarioId
         """
@@ -199,6 +201,8 @@ interface ObrasDao {
         observacaoRetornoBase: String,
         retornoBaseConcluido: Boolean,
         observacaoFinalDo: String,
+        fotoHospedagemPath: String,
+        enderecoHospedagem: String,
         diarioFechado: Boolean
     )
 
@@ -207,4 +211,30 @@ interface ObrasDao {
 
     @Delete
     suspend fun excluirServico(servico: ServicoEntity)
+
+    @Insert
+    suspend fun inserirDeslocamento(item: DeslocamentoItemEntity)
+
+    @Query("""
+    UPDATE desvios
+    SET inicio = :inicio
+    WHERE id = :id
+    """)
+    suspend fun atualizarInicioDesvio(id: Long, inicio: String)
+
+    @Query("""
+    UPDATE desvios
+    SET fim = :fim
+    WHERE id = :id
+    """)
+    suspend fun atualizarFimDesvio(id: Long, fim: String)
+
+    @Query("""
+    UPDATE desvios
+    SET observacao = :observacao
+    WHERE id = :id
+    """)
+    suspend fun atualizarObservacaoDesvio(id: Long, observacao: String)
+
+
 }

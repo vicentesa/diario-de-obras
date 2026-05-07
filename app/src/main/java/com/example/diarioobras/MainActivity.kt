@@ -14,7 +14,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.diarioobras.data.SyncScheduler
-import com.example.diarioobras.ui.DiarioScreen
 import com.example.diarioobras.ui.MainViewModel
 import com.example.diarioobras.ui.ObraDetalheScreen
 import com.example.diarioobras.ui.ObraInfoScreen
@@ -44,6 +43,7 @@ fun DiarioObrasApp() {
         navController = navController,
         startDestination = "obras"
     ) {
+
         composable("obras") {
             ObrasScreen(
                 viewModel = viewModel,
@@ -58,6 +58,7 @@ fun DiarioObrasApp() {
             arguments = listOf(navArgument("obraId") { type = NavType.LongType })
         ) { backStackEntry ->
             val obraId = backStackEntry.arguments?.getLong("obraId") ?: 0L
+
             ObraInfoScreen(
                 obraId = obraId,
                 viewModel = viewModel,
@@ -72,6 +73,7 @@ fun DiarioObrasApp() {
             arguments = listOf(navArgument("obraId") { type = NavType.LongType })
         ) { backStackEntry ->
             val obraId = backStackEntry.arguments?.getLong("obraId") ?: 0L
+
             ObraDetalheScreen(
                 obraId = obraId,
                 viewModel = viewModel,
@@ -88,14 +90,24 @@ fun DiarioObrasApp() {
                 navArgument("abaInicial") { type = NavType.IntType }
             )
         ) { backStackEntry ->
+
             val diarioId = backStackEntry.arguments?.getLong("diarioId") ?: 0L
             val abaInicial = backStackEntry.arguments?.getInt("abaInicial") ?: 0
 
             DiarioEtapasScreen(
                 diarioId = diarioId,
                 viewModel = viewModel,
+
                 onAbrirServico = { servicoId ->
                     navController.navigate("servico/$diarioId/$servicoId")
+                },
+
+                // 👇 NOVO BLOCO
+                onAbrirDiario = { novoDiarioId ->
+                    navController.navigate("diario/$novoDiarioId/0") {
+                        popUpTo("diario/$diarioId/0") { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             )
         }
@@ -107,6 +119,7 @@ fun DiarioObrasApp() {
                 navArgument("servicoId") { type = NavType.LongType }
             )
         ) { backStackEntry ->
+
             val diarioId = backStackEntry.arguments?.getLong("diarioId") ?: 0L
             val servicoId = backStackEntry.arguments?.getLong("servicoId") ?: 0L
 
@@ -114,9 +127,11 @@ fun DiarioObrasApp() {
                 diarioId = diarioId,
                 servicoId = servicoId,
                 viewModel = viewModel,
+
                 onVoltar = {
                     navController.popBackStack()
                 },
+
                 onSalvarConcluir = {
                     navController.navigate("diario/$diarioId/3") {
                         popUpTo("diario/$diarioId/0") { inclusive = false }
