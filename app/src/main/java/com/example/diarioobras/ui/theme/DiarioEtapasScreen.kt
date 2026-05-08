@@ -144,6 +144,8 @@ fun DiarioEtapasScreen(
 
     var desviosExpandido by remember { mutableStateOf(false) }
 
+    val diarioFechado = diario?.diarioFechado == true || diario?.statusFechamentoDo == StatusEtapa.CONCLUIDA
+
     // Etapa 1
     var menuEncarregadoExpandido by remember { mutableStateOf(false) }
     var encarregadoSelecionado by remember(diarioId) { mutableStateOf("") }
@@ -602,6 +604,7 @@ fun DiarioEtapasScreen(
 
                             OutlinedButton(
                                 onClick = { menuEncarregadoExpandido = true },
+                                enabled = !diarioFechado,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
@@ -635,6 +638,7 @@ fun DiarioEtapasScreen(
 
                             OutlinedButton(
                                 onClick = { menuEquipeExpandido = true },
+                                enabled = !diarioFechado,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
@@ -695,6 +699,7 @@ fun DiarioEtapasScreen(
                                     DeslocamentoCard(
                                         item = item,
                                         somenteInicio = true,
+                                        bloqueado = diarioFechado,
                                         onMarcarInicio = { viewModel.marcarInicio(item) },
                                         onMarcarFim = { },
                                         onSalvarManual = { inicio, _ ->
@@ -719,7 +724,7 @@ fun DiarioEtapasScreen(
                                     )
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = etapa1PodeConcluir
+                                enabled = etapa1PodeConcluir && !diarioFechado
                             ) {
                                 Text("Salvar e concluir etapa 1")
                             }
@@ -748,6 +753,7 @@ fun DiarioEtapasScreen(
 
                             OutlinedButton(
                                 onClick = { menuVeiculoExpandido = true },
+                                enabled = !diarioFechado,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
@@ -796,6 +802,7 @@ fun DiarioEtapasScreen(
 
                             OutlinedButton(
                                 onClick = { menuCompactacaoExpandido = true },
+                                enabled = !diarioFechado,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
@@ -844,6 +851,7 @@ fun DiarioEtapasScreen(
 
                             OutlinedButton(
                                 onClick = { menuEquipamentosExpandido = true },
+                                enabled = !diarioFechado,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
@@ -894,6 +902,7 @@ fun DiarioEtapasScreen(
                                 DeslocamentoCard(
                                     item = item,
                                     somenteInicio = true,
+                                    bloqueado = diarioFechado,
                                     onMarcarInicio = { viewModel.marcarInicio(item) },
                                     onMarcarFim = { },
                                     onSalvarManual = { inicio, _ ->
@@ -915,7 +924,7 @@ fun DiarioEtapasScreen(
                                     )
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = etapa2PodeConcluir
+                                enabled = etapa2PodeConcluir && !diarioFechado
                             ) {
                                 Text("Salvar e concluir etapa 2")
                             }
@@ -954,6 +963,7 @@ fun DiarioEtapasScreen(
                                 DeslocamentoCard(
                                     item = item,
                                     somenteInicio = true,
+                                    bloqueado = diarioFechado,
                                     onMarcarInicio = { viewModel.marcarInicio(item) },
                                     onMarcarFim = { },
                                     onSalvarManual = { inicio, _ ->
@@ -972,6 +982,7 @@ fun DiarioEtapasScreen(
                                 DeslocamentoCard(
                                     item = item,
                                     somenteInicio = true,
+                                    bloqueado = diarioFechado,
                                     onMarcarInicio = { viewModel.marcarInicio(item) },
                                     onMarcarFim = { },
                                     onSalvarManual = { inicio, _ ->
@@ -990,6 +1001,7 @@ fun DiarioEtapasScreen(
                                 DeslocamentoCard(
                                     item = item,
                                     somenteInicio = true,
+                                    bloqueado = diarioFechado,
                                     onMarcarInicio = { viewModel.marcarInicio(item) },
                                     onMarcarFim = { },
                                     onSalvarManual = { inicio, _ ->
@@ -1008,6 +1020,7 @@ fun DiarioEtapasScreen(
                                 DeslocamentoCard(
                                     item = item,
                                     somenteInicio = true,
+                                    bloqueado = diarioFechado,
                                     onMarcarInicio = { viewModel.marcarInicio(item) },
                                     onMarcarFim = { },
                                     onSalvarManual = { inicio, _ ->
@@ -1037,6 +1050,7 @@ fun DiarioEtapasScreen(
                                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                                     }
                                 },
+                                enabled = !diarioFechado,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
@@ -1065,7 +1079,8 @@ fun DiarioEtapasScreen(
 
                             CamposQuantidadeEtapa3(
                                 veiculos = veiculosEtapa3,
-                                quantidades = quantidadesEtapa3
+                                quantidades = quantidadesEtapa3,
+                                bloqueado = diarioFechado
                             )
 
                             Text("Saída da Usina para o trecho", style = MaterialTheme.typography.titleSmall)
@@ -1075,6 +1090,7 @@ fun DiarioEtapasScreen(
                                 DeslocamentoCard(
                                     item = item,
                                     somenteInicio = true,
+                                    bloqueado = diarioFechado,
                                     onMarcarInicio = { viewModel.marcarInicio(item) },
                                     onMarcarFim = { },
                                     onSalvarManual = { inicio, _ ->
@@ -1100,7 +1116,7 @@ fun DiarioEtapasScreen(
                                     )
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = etapa3PodeConcluir
+                                enabled = etapa3PodeConcluir && !diarioFechado
                             ) {
                                 Text("Salvar e concluir etapa 3")
                             }
@@ -2477,7 +2493,8 @@ private fun criarUriParaFotoEtapa(context: Context): Uri {
 @Composable
 private fun CamposQuantidadeEtapa3(
     veiculos: List<String>,
-    quantidades: SnapshotStateList<String>
+    quantidades: SnapshotStateList<String>,
+    bloqueado: Boolean = false
 ) {
     Column {
         veiculos.forEachIndexed { index, veiculo ->
@@ -2495,6 +2512,7 @@ private fun CamposQuantidadeEtapa3(
                         quantidades[index] = filtrado
                     }
                 },
+                enabled = !bloqueado,
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("Quantidade em ton") },
                 keyboardOptions = KeyboardOptions(

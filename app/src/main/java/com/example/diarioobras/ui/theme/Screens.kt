@@ -1508,6 +1508,7 @@ fun DiarioScreen(
 fun DeslocamentoCard(
     item: DeslocamentoItemEntity,
     somenteInicio: Boolean = false,
+    bloqueado: Boolean = false,
     onMarcarInicio: () -> Unit,
     onMarcarFim: () -> Unit,
     onSalvarManual: (String, String) -> Unit
@@ -1549,6 +1550,7 @@ fun DeslocamentoCard(
             ) {
                 Button(
                     onClick = onMarcarInicio,
+                    enabled = !bloqueado,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("Marcar entrada")
@@ -1556,6 +1558,7 @@ fun DeslocamentoCard(
 
                 OutlinedButton(
                     onClick = { mostrarDialogInicio = true },
+                    enabled = !bloqueado,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("Editar entrada")
@@ -1571,6 +1574,7 @@ fun DeslocamentoCard(
                 ) {
                     Button(
                         onClick = onMarcarFim,
+                        enabled = !bloqueado,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Marcar fim")
@@ -1578,6 +1582,7 @@ fun DeslocamentoCard(
 
                     OutlinedButton(
                         onClick = { mostrarDialogFim = true },
+                        enabled = !bloqueado,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Editar fim")
