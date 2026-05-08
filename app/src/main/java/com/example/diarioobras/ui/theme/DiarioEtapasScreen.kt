@@ -73,9 +73,6 @@ import androidx.compose.foundation.layout.Row
 
 import androidx.compose.runtime.key
 
-import android.app.AlertDialog
-import android.widget.EditText
-
 import androidx.navigation.NavHostController
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -214,10 +211,6 @@ fun DiarioEtapasScreen(
     var outroContratoSelecionado by remember(diarioId) { mutableStateOf("") }
 
     var menuTipoDesvioExpandido by remember { mutableStateOf(false) }
-
-    var mostrarDialogObservacao by remember { mutableStateOf(false) }
-    var textoObservacaoDialog by remember { mutableStateOf("") }
-    var desvioSelecionadoParaObservacao by remember { mutableStateOf<DesvioItemEntity?>(null) }
 
     val hospedagemCameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
@@ -1864,52 +1857,6 @@ fun DiarioEtapasScreen(
         }
     }
 
-    if (mostrarDialogObservacao && desvioSelecionadoParaObservacao != null) {
-        AlertDialog(
-            onDismissRequest = {
-                mostrarDialogObservacao = false
-                desvioSelecionadoParaObservacao = null
-            },
-            title = {
-                Text("Editar observação do desvio")
-            },
-            text = {
-                OutlinedTextField(
-                    value = textoObservacaoDialog,
-                    onValueChange = { textoObservacaoDialog = it },
-                    label = { Text("Observação") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 3
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        desvioSelecionadoParaObservacao?.let { desvio ->
-                            viewModel.atualizarObservacaoDesvio(
-                                id = desvio.id,
-                                texto = textoObservacaoDialog
-                            )
-                        }
-                        mostrarDialogObservacao = false
-                        desvioSelecionadoParaObservacao = null
-                    }
-                ) {
-                    Text("Salvar")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        mostrarDialogObservacao = false
-                        desvioSelecionadoParaObservacao = null
-                    }
-                ) {
-                    Text("Cancelar")
-                }
-            }
-        )
-    }
     if (servicoPendenteExclusao != null) {
         AlertDialog(
             onDismissRequest = {
@@ -2023,25 +1970,17 @@ fun DesviosCard(
     var observacaoEmCadastro by remember { mutableStateOf("") }
     var desvioExpandidoId by remember { mutableStateOf<Long?>(null) }
 
-    val context = LocalContext.current
+    var seletorHoraAberto by remember { mutableStateOf(false) }
+    var seletorHoraInicialHora by remember { mutableStateOf(8) }
+    var seletorHoraInicialMinuto by remember { mutableStateOf(0) }
+    var seletorHoraCallback by remember { mutableStateOf<((String) -> Unit)?>(null) }
 
-    fun abrirSeletorHora(
-        valorAtual: String,
-        onHoraSelecionada: (String) -> Unit
-    ) {
+    fun abrirSeletorHora(valorAtual: String, onHoraSelecionada: (String) -> Unit) {
         val partes = valorAtual.split(":")
-        val horaInicial = partes.getOrNull(0)?.toIntOrNull() ?: 8
-        val minutoInicial = partes.getOrNull(1)?.toIntOrNull() ?: 0
-
-        android.app.TimePickerDialog(
-            context,
-            { _, hora, minuto ->
-                onHoraSelecionada("%02d:%02d".format(hora, minuto))
-            },
-            horaInicial,
-            minutoInicial,
-            true
-        ).show()
+        seletorHoraInicialHora = partes.getOrNull(0)?.toIntOrNull() ?: 8
+        seletorHoraInicialMinuto = partes.getOrNull(1)?.toIntOrNull() ?: 0
+        seletorHoraCallback = onHoraSelecionada
+        seletorHoraAberto = true
     }
 
     Card(
@@ -2427,6 +2366,22 @@ fun DesviosCard(
             }
         }
     }
+
+    if (seletorHoraAberto) {
+        TimePickerDialogCompose(
+            initialHour = seletorHoraInicialHora,
+            initialMinute = seletorHoraInicialMinuto,
+            onConfirm = { hora ->
+                seletorHoraCallback?.invoke(hora)
+                seletorHoraAberto = false
+                seletorHoraCallback = null
+            },
+            onDismiss = {
+                seletorHoraAberto = false
+                seletorHoraCallback = null
+            }
+        )
+    }
 }
 
 private val LISTA_FUNCIONARIOS = listOf(
@@ -2580,5 +2535,35 @@ private fun criarUriParaFotoDiario(context: Context): Uri {
         context,
         "${context.packageName}.fileprovider",
         arquivo
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimePickerDialogCompose(
+    initialHour: Int,
+    initialMinute: Int,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val state = rememberTimePickerState(
+        initialHour = initialHour,
+        initialMinute = initialMinute,
+        is24Hour = true
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Selecionar hora") },
+        text = { TimePicker(state = state) },
+        confirmButton = {
+            TextButton(onClick = { onConfirm("%02d:%02d".format(state.hour, state.minute)) }) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
     )
 }
