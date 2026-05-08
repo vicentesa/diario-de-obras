@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.PopupProperties
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -2199,17 +2200,18 @@ fun DesviosCard(
 
                 Button(
                     onClick = {
-                        menuTipoDesvioExpandido = true
+                        menuTipoDesvioExpandido = !menuTipoDesvioExpandido
                     },
                     enabled = !bloqueado && codigoEmCadastro.isBlank(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Adicionar desvio")
+                    Text(if (menuTipoDesvioExpandido) "Cancelar" else "Adicionar desvio")
                 }
 
                 DropdownMenu(
                     expanded = menuTipoDesvioExpandido,
-                    onDismissRequest = { menuTipoDesvioExpandido = false }
+                    onDismissRequest = { menuTipoDesvioExpandido = false },
+                    properties = PopupProperties(focusable = false)
                 ) {
                     tiposDesvio.forEach { item ->
                         val codigo = item.first
