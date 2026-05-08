@@ -1758,7 +1758,7 @@ fun DiarioEtapasScreen(
                     expandido = desviosExpandido,
                     onClick = {
                         desviosExpandido = !desviosExpandido
-                        if (!desviosExpandido) {
+                        if (desviosExpandido) {
                             etapaExpandida = 0
                         }
                     },
