@@ -143,13 +143,13 @@ interface ObrasDao {
     suspend fun atualizarStatusEtapasDiario(
         diarioId: Long,
         etapaAtual: Int,
-        statusEquipe: String,
-        statusEquipamento: String,
-        statusCarregamento: String,
-        statusServicos: String,
-        statusFechamentoServicos: String,
-        statusRetornoBase: String,
-        statusFechamentoDo: String,
+        statusEquipe: StatusEtapa,
+        statusEquipamento: StatusEtapa,
+        statusCarregamento: StatusEtapa,
+        statusServicos: StatusEtapa,
+        statusFechamentoServicos: StatusEtapa,
+        statusRetornoBase: StatusEtapa,
+        statusFechamentoDo: StatusEtapa,
         diarioFechado: Boolean
     )
 
@@ -235,6 +235,9 @@ interface ObrasDao {
     WHERE id = :id
     """)
     suspend fun atualizarObservacaoDesvio(id: Long, observacao: String)
+
+    @Query("SELECT * FROM desvios WHERE id = :id LIMIT 1")
+    suspend fun buscarDesvioPorId(id: Long): DesvioItemEntity?
 
 
 }

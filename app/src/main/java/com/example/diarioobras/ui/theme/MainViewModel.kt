@@ -7,6 +7,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.diarioobras.data.AppDatabase
+import com.example.diarioobras.data.StatusEtapa
 import com.example.diarioobras.data.CarregamentoItemEntity
 import com.example.diarioobras.data.DeslocamentoItemEntity
 import com.example.diarioobras.data.DesvioItemEntity
@@ -70,7 +71,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
     }
-
+    suspend fun buscarDesvioPorId(id: Long) = dao.buscarDesvioPorId(id)
     suspend fun salvarServicoCompleto(
         servico: ServicoEntity,
         areas: List<ServicoAreaEntity>
@@ -88,15 +89,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         val diarioAtual = dao.buscarDiarioPorId(servico.diarioId)
-        if (diarioAtual != null && diarioAtual.statusServicos != "CONCLUIDA") {
+        if (diarioAtual != null && diarioAtual.statusServicos != StatusEtapa.CONCLUIDA) {
             dao.atualizarStatusEtapasDiario(
                 diarioId = servico.diarioId,
                 etapaAtual = 4,
                 statusEquipe = diarioAtual.statusEquipe,
                 statusEquipamento = diarioAtual.statusEquipamento,
                 statusCarregamento = diarioAtual.statusCarregamento,
-                statusServicos = "EM_ANDAMENTO",
-                statusFechamentoServicos = "DISPONIVEL",
+                statusServicos = StatusEtapa.EM_ANDAMENTO,
+                statusFechamentoServicos = StatusEtapa.DISPONIVEL,
                 statusRetornoBase = diarioAtual.statusRetornoBase,
                 statusFechamentoDo = diarioAtual.statusFechamentoDo,
                 diarioFechado = diarioAtual.diarioFechado
@@ -135,9 +136,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 statusEquipe = diarioAtual.statusEquipe,
                 statusEquipamento = diarioAtual.statusEquipamento,
                 statusCarregamento = diarioAtual.statusCarregamento,
-                statusServicos = "CONCLUIDA",
-                statusFechamentoServicos = "CONCLUIDA",
-                statusRetornoBase = "DISPONIVEL",
+                statusServicos = StatusEtapa.CONCLUIDA,
+                statusFechamentoServicos = StatusEtapa.CONCLUIDA,
+                statusRetornoBase = StatusEtapa.DISPONIVEL,
                 statusFechamentoDo = diarioAtual.statusFechamentoDo,
                 diarioFechado = diarioAtual.diarioFechado
             )
@@ -249,8 +250,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             dao.atualizarStatusEtapasDiario(
                 diarioId = diarioId,
                 etapaAtual = 2,
-                statusEquipe = "CONCLUIDA",
-                statusEquipamento = "DISPONIVEL",
+                statusEquipe = StatusEtapa.CONCLUIDA,
+                statusEquipamento = StatusEtapa.DISPONIVEL,
                 statusCarregamento = diarioAtual.statusCarregamento,
                 statusServicos = diarioAtual.statusServicos,
                 statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
@@ -282,8 +283,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 diarioId = diarioId,
                 etapaAtual = 3,
                 statusEquipe = diarioAtual.statusEquipe,
-                statusEquipamento = "CONCLUIDA",
-                statusCarregamento = "DISPONIVEL",
+                statusEquipamento = StatusEtapa.CONCLUIDA,
+                statusCarregamento = StatusEtapa.DISPONIVEL,
                 statusServicos = diarioAtual.statusServicos,
                 statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
                 statusRetornoBase = diarioAtual.statusRetornoBase,
@@ -503,8 +504,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 statusEquipe = diarioAtual.statusEquipe,
                 statusEquipamento = diarioAtual.statusEquipamento,
                 statusCarregamento = diarioAtual.statusCarregamento,
-                statusServicos = "EM_ANDAMENTO",
-                statusFechamentoServicos = "DISPONIVEL",
+                statusServicos = StatusEtapa.EM_ANDAMENTO,
+                statusFechamentoServicos = StatusEtapa.DISPONIVEL,
                 statusRetornoBase = diarioAtual.statusRetornoBase,
                 statusFechamentoDo = diarioAtual.statusFechamentoDo,
                 diarioFechado = diarioAtual.diarioFechado
@@ -542,9 +543,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 statusEquipe = diarioAtual.statusEquipe,
                 statusEquipamento = diarioAtual.statusEquipamento,
                 statusCarregamento = diarioAtual.statusCarregamento,
-                statusServicos = "CONCLUIDA",
-                statusFechamentoServicos = "CONCLUIDA",
-                statusRetornoBase = "DISPONIVEL",
+                statusServicos = StatusEtapa.CONCLUIDA,
+                statusFechamentoServicos = StatusEtapa.CONCLUIDA,
+                statusRetornoBase = StatusEtapa.DISPONIVEL,
                 statusFechamentoDo = diarioAtual.statusFechamentoDo,
                 diarioFechado = diarioAtual.diarioFechado
             )
@@ -615,8 +616,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 statusCarregamento = diarioAtual.statusCarregamento,
                 statusServicos = diarioAtual.statusServicos,
                 statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
-                statusRetornoBase = "CONCLUIDA",
-                statusFechamentoDo = "DISPONIVEL",
+                statusRetornoBase = StatusEtapa.CONCLUIDA,
+                statusFechamentoDo = StatusEtapa.DISPONIVEL,
                 diarioFechado = diarioAtual.diarioFechado
             )
         }
@@ -668,7 +669,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 statusServicos = diarioAtual.statusServicos,
                 statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
                 statusRetornoBase = diarioAtual.statusRetornoBase,
-                statusFechamentoDo = "CONCLUIDA",
+                statusFechamentoDo = StatusEtapa.CONCLUIDA,
                 diarioFechado = true
             )
         }
@@ -695,6 +696,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         observacao: String
     ) {
         viewModelScope.launch {
+            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+            if (diarioAtual.diarioFechado || diarioAtual.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
+                return@launch
+            }
+
             dao.inserirDesvio(
                 DesvioItemEntity(
                     diarioId = diarioId,
@@ -710,12 +716,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun marcarInicioDesvio(item: DesvioItemEntity) {
         viewModelScope.launch {
+            val diarioAtual = dao.buscarDiarioPorId(item.diarioId) ?: return@launch
+            if (diarioAtual.diarioFechado || diarioAtual.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
+                return@launch
+            }
+
             dao.atualizarDesvio(item.copy(inicio = horaAtual()))
         }
     }
 
     fun marcarFimDesvio(item: DesvioItemEntity) {
         viewModelScope.launch {
+            val diarioAtual = dao.buscarDiarioPorId(item.diarioId) ?: return@launch
+            if (diarioAtual.diarioFechado || diarioAtual.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
+                return@launch
+            }
+
             dao.atualizarDesvio(item.copy(fim = horaAtual()))
         }
     }
@@ -726,6 +742,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         novoFim: String?
     ) {
         viewModelScope.launch {
+            val diarioAtual = dao.buscarDiarioPorId(item.diarioId) ?: return@launch
+            if (diarioAtual.diarioFechado || diarioAtual.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
+                return@launch
+            }
+
             dao.atualizarDesvio(
                 item.copy(
                     inicio = novoInicio.orEmpty(),
@@ -757,8 +778,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 etapaAtual = 4,
                 statusEquipe = diarioAtual.statusEquipe,
                 statusEquipamento = diarioAtual.statusEquipamento,
-                statusCarregamento = "CONCLUIDA",
-                statusServicos = "DISPONIVEL",
+                statusCarregamento = StatusEtapa.CONCLUIDA,
+                statusServicos = StatusEtapa.DISPONIVEL,
                 statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
                 statusRetornoBase = diarioAtual.statusRetornoBase,
                 statusFechamentoDo = diarioAtual.statusFechamentoDo,
@@ -806,13 +827,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun atualizarStatusEtapasDiario(
         diarioId: Long,
         etapaAtual: Int,
-        statusEquipe: String,
-        statusEquipamento: String,
-        statusCarregamento: String,
-        statusServicos: String,
-        statusFechamentoServicos: String,
-        statusRetornoBase: String,
-        statusFechamentoDo: String,
+        statusEquipe: StatusEtapa,
+        statusEquipamento: StatusEtapa,
+        statusCarregamento: StatusEtapa,
+        statusServicos: StatusEtapa,
+        statusFechamentoServicos: StatusEtapa,
+        statusRetornoBase: StatusEtapa,
+        statusFechamentoDo: StatusEtapa,
         diarioFechado: Boolean = false
     ) {
         viewModelScope.launch {
@@ -1084,10 +1105,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     pesoLiquidoTon = diarioOrigem.pesoLiquidoTon,
                     fotoTicketUri = diarioOrigem.fotoTicketUri,
 
-                    statusEquipe = "CONCLUIDA",
-                    statusEquipamento = "CONCLUIDA",
-                    statusCarregamento = "CONCLUIDA",
-                    statusServicos = "EM_ANDAMENTO",
+                    statusEquipe = StatusEtapa.CONCLUIDA,
+                    statusEquipamento = StatusEtapa.CONCLUIDA,
+                    statusCarregamento = StatusEtapa.CONCLUIDA,
+                    statusServicos = StatusEtapa.EM_ANDAMENTO,
 
                     etapaAtual = 4,
 
@@ -1155,8 +1176,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 statusCarregamento = diarioOrigem.statusCarregamento,
                 statusServicos = diarioOrigem.statusServicos,
                 statusFechamentoServicos = diarioOrigem.statusFechamentoServicos,
-                statusRetornoBase = "CONCLUIDA",
-                statusFechamentoDo = "DISPONIVEL",
+                statusRetornoBase = StatusEtapa.CONCLUIDA,
+                statusFechamentoDo = StatusEtapa.DISPONIVEL,
                 diarioFechado = diarioOrigem.diarioFechado
             )
         }

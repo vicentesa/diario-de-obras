@@ -6,6 +6,17 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Relation
+import androidx.room.TypeConverter
+
+enum class StatusEtapa { DISPONIVEL, BLOQUEADA, CONCLUIDA, EM_ANDAMENTO }
+
+class StatusEtapaConverter {
+    @TypeConverter
+    fun fromStatusEtapa(value: StatusEtapa): String = value.name
+
+    @TypeConverter
+    fun toStatusEtapa(value: String): StatusEtapa = StatusEtapa.valueOf(value)
+}
 
 @Entity(tableName = "obras")
 data class ObraEntity(
@@ -31,7 +42,7 @@ data class ObraEntity(
 )
 data class DiarioEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val obraId: Long,
+   val obraId: Long,
     val data: String,
 
     // Etapa 1 - Equipe
@@ -51,13 +62,13 @@ data class DiarioEntity(
     // Controle da V2
     val etapaAtual: Int = 1,
 
-    val statusEquipe: String = "DISPONIVEL",
-    val statusEquipamento: String = "BLOQUEADA",
-    val statusCarregamento: String = "BLOQUEADA",
-    val statusServicos: String = "BLOQUEADA",
-    val statusFechamentoServicos: String = "BLOQUEADA",
-    val statusRetornoBase: String = "BLOQUEADA",
-    val statusFechamentoDo: String = "BLOQUEADA",
+    val statusEquipe: StatusEtapa = StatusEtapa.DISPONIVEL,
+    val statusEquipamento: StatusEtapa = StatusEtapa.BLOQUEADA,
+    val statusCarregamento: StatusEtapa = StatusEtapa.BLOQUEADA,
+    val statusServicos: StatusEtapa = StatusEtapa.BLOQUEADA,
+    val statusFechamentoServicos: StatusEtapa = StatusEtapa.BLOQUEADA,
+    val statusRetornoBase: StatusEtapa = StatusEtapa.BLOQUEADA,
+    val statusFechamentoDo: StatusEtapa = StatusEtapa.BLOQUEADA,
 
     // Etapa 4 - Serviços / intervalo legal
     val inicioIntervalo: String? = null,
@@ -86,6 +97,7 @@ data class DiarioEntity(
 
     val sincronizado: Boolean = false
 )
+
 
 @Entity(
     tableName = "deslocamentos",

@@ -57,6 +57,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 
 
 import com.example.diarioobras.data.ServicoEntity
+import com.example.diarioobras.data.StatusEtapa
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.*
 import coil.compose.rememberAsyncImagePainter
@@ -70,12 +71,20 @@ import com.example.diarioobras.data.DesvioItemEntity
 import com.example.diarioobras.ui.MainViewModel
 import androidx.compose.foundation.layout.Row
 
+import androidx.compose.runtime.key
+
+import android.app.AlertDialog
+import android.widget.EditText
+
+import androidx.navigation.NavHostController
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DiarioEtapasScreen(
     diarioId: Long,
     viewModel: MainViewModel,
+    navController: NavHostController,
+    abaInicial: Int,
     onAbrirServico: (Long) -> Unit,
     onAbrirDiario: (Long) -> Unit
 ) {
@@ -205,6 +214,10 @@ fun DiarioEtapasScreen(
     var outroContratoSelecionado by remember(diarioId) { mutableStateOf("") }
 
     var menuTipoDesvioExpandido by remember { mutableStateOf(false) }
+
+    var mostrarDialogObservacao by remember { mutableStateOf(false) }
+    var textoObservacaoDialog by remember { mutableStateOf("") }
+    var desvioSelecionadoParaObservacao by remember { mutableStateOf<DesvioItemEntity?>(null) }
 
     val hospedagemCameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
@@ -577,7 +590,7 @@ fun DiarioEtapasScreen(
                 EtapaCard(
                     numero = 1,
                     titulo = "Equipe",
-                    status = diario?.statusEquipe ?: "BLOQUEADA",
+                    status = diario?.statusEquipe ?: StatusEtapa.BLOQUEADA,
                     expandida = etapaExpandida == 1,
                     onClick = {
                         etapaExpandida = 1
@@ -723,7 +736,7 @@ fun DiarioEtapasScreen(
                 EtapaCard(
                     numero = 2,
                     titulo = "Equipamento",
-                    status = diario?.statusEquipamento ?: "BLOQUEADA",
+                    status = diario?.statusEquipamento ?: StatusEtapa.BLOQUEADA,
                     expandida = etapaExpandida == 2,
                     onClick = {
                         etapaExpandida = 2
@@ -919,7 +932,7 @@ fun DiarioEtapasScreen(
                 EtapaCard(
                     numero = 3,
                     titulo = "Carregamento / Abastecimento",
-                    status = diario?.statusCarregamento ?: "BLOQUEADA",
+                    status = diario?.statusCarregamento ?: StatusEtapa.BLOQUEADA,
                     expandida = etapaExpandida == 3,
                     onClick = {
                         etapaExpandida = 3
@@ -1104,7 +1117,7 @@ fun DiarioEtapasScreen(
                 EtapaCard(
                     numero = 4,
                     titulo = "Serviços",
-                    status = diario?.statusServicos ?: "BLOQUEADA",
+                    status = diario?.statusServicos ?: StatusEtapa.BLOQUEADA,
                     expandida = etapaExpandida == 4,
                     onClick = {
                         etapaExpandida = 4
@@ -1115,7 +1128,7 @@ fun DiarioEtapasScreen(
                             !it.inicio.isNullOrBlank()
                         }
 
-                        val servicosEncerrados = diario?.statusServicos == "CONCLUIDA"
+                        val servicosEncerrados = diario?.statusServicos == StatusEtapa.CONCLUIDA
 
                         Column {
                             Text(
@@ -1337,7 +1350,7 @@ fun DiarioEtapasScreen(
                 EtapaCard(
                     numero = 5,
                     titulo = "Fechamento dos serviços",
-                    status = diario?.statusFechamentoServicos ?: "BLOQUEADA",
+                    status = diario?.statusFechamentoServicos ?: StatusEtapa.BLOQUEADA,
                     expandida = etapaExpandida == 5,
                     onClick = {
                         etapaExpandida = 5
@@ -1365,7 +1378,7 @@ fun DiarioEtapasScreen(
                                     menuProximoDestinoExpandido = true
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = diario?.statusServicos != "CONCLUIDA"
+                                enabled = diario?.statusServicos != StatusEtapa.CONCLUIDA
                             ) {
                                 Text(
                                     if (proximoDestinoSelecionado.isBlank()) {
@@ -1377,7 +1390,7 @@ fun DiarioEtapasScreen(
                             }
 
                             DropdownMenu(
-                                expanded = menuProximoDestinoExpandido && diario?.statusServicos != "CONCLUIDA",
+                                expanded = menuProximoDestinoExpandido && diario?.statusServicos != StatusEtapa.CONCLUIDA,
                                 onDismissRequest = { menuProximoDestinoExpandido = false }
                             ) {
                                 listOf(
@@ -1405,7 +1418,7 @@ fun DiarioEtapasScreen(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            if (diario?.statusServicos != "CONCLUIDA") {
+                            if (diario?.statusServicos != StatusEtapa.CONCLUIDA) {
 
                                 Button(
                                     onClick = {
@@ -1472,7 +1485,7 @@ fun DiarioEtapasScreen(
                         "Para hospedagem" -> "Deslocamento para hospedagem"
                         else -> "Deslocamento ao próximo destino"
                     },
-                    status = diario?.statusRetornoBase ?: "BLOQUEADA",
+                    status = diario?.statusRetornoBase ?: StatusEtapa.BLOQUEADA,
                     expandida = etapaExpandida == 6,
                     onClick = {
                         etapaExpandida = 6
@@ -1515,7 +1528,7 @@ fun DiarioEtapasScreen(
 
                         val saidaRegistrada = !diario?.saidaRetornoBase.isNullOrBlank()
                         val chegadaRegistrada = !diario?.chegadaBase.isNullOrBlank()
-                        val etapaConcluida = diario?.statusRetornoBase == "CONCLUIDA"
+                        val etapaConcluida = diario?.statusRetornoBase == StatusEtapa.CONCLUIDA
 
                         Column {
                             if (destinoSelecionado.isNotBlank()) {
@@ -1747,13 +1760,16 @@ fun DiarioEtapasScreen(
                     tiposDesvio = tiposDesvio,
                     diarioId = diarioId,
                     viewModel = viewModel,
-                    bloqueado = false,
+                    bloqueado = diario?.diarioFechado == true || diario?.statusFechamentoDo == StatusEtapa.CONCLUIDA,
                     expandido = desviosExpandido,
                     onClick = {
                         desviosExpandido = !desviosExpandido
                         if (!desviosExpandido) {
                             etapaExpandida = 0
                         }
+                    },
+                    onEditarObservacao = { desvio ->
+                        navController.navigate("editar_observacao_desvio/${desvio.id}")
                     }
                 )
 
@@ -1761,33 +1777,48 @@ fun DiarioEtapasScreen(
                 EtapaCard(
                     numero = 7,
                     titulo = "Fechamento do D.O.",
-                    status = diario?.statusFechamentoDo ?: "BLOQUEADA",
+                    status = diario?.statusFechamentoDo ?: StatusEtapa.BLOQUEADA,
                     expandida = etapaExpandida == 7,
                     onClick = {
                         etapaExpandida = 7
                         desviosExpandido = false
                     },
                     conteudo = {
-                        Column {
-                            Text(
-                                "Observação final: ${
-                                    diario?.observacaoFinalDo?.ifBlank { "Nenhuma observação" } ?: "Nenhuma observação"
-                                }"
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
+                        var observacaoFinalLocal by remember(diario?.id, diario?.observacaoFinalDo) {
+                            mutableStateOf(diario?.observacaoFinalDo ?: "")
+                        }
 
-                            if (diario?.statusFechamentoDo == "CONCLUIDA") {
+                        Column {
+                            if (diario?.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
+                                Text(
+                                    text = "Observação final: ${
+                                        diario?.observacaoFinalDo?.ifBlank { "Nenhuma observação" }
+                                            ?: "Nenhuma observação"
+                                    }"
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+
                                 Text(
                                     text = "Diário encerrado com sucesso.",
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             } else {
+                                OutlinedTextField(
+                                    value = observacaoFinalLocal,
+                                    onValueChange = { observacaoFinalLocal = it },
+                                    label = { Text("Observação final") },
+                                    placeholder = { Text("Digite a observação final do D.O.") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 3
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
                                 Button(
                                     onClick = {
                                         viewModel.concluirFechamentoDo(
                                             diarioId = diarioId,
-                                            observacaoFinalDo = diario?.observacaoFinalDo?.ifBlank { "D.O. finalizado" }
-                                                ?: "D.O. finalizado"
+                                            observacaoFinalDo = observacaoFinalLocal.ifBlank { "D.O. finalizado" }
                                         )
                                     },
                                     modifier = Modifier.fillMaxWidth()
@@ -1832,6 +1863,53 @@ fun DiarioEtapasScreen(
             }
         }
     }
+
+    if (mostrarDialogObservacao && desvioSelecionadoParaObservacao != null) {
+        AlertDialog(
+            onDismissRequest = {
+                mostrarDialogObservacao = false
+                desvioSelecionadoParaObservacao = null
+            },
+            title = {
+                Text("Editar observação do desvio")
+            },
+            text = {
+                OutlinedTextField(
+                    value = textoObservacaoDialog,
+                    onValueChange = { textoObservacaoDialog = it },
+                    label = { Text("Observação") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        desvioSelecionadoParaObservacao?.let { desvio ->
+                            viewModel.atualizarObservacaoDesvio(
+                                id = desvio.id,
+                                texto = textoObservacaoDialog
+                            )
+                        }
+                        mostrarDialogObservacao = false
+                        desvioSelecionadoParaObservacao = null
+                    }
+                ) {
+                    Text("Salvar")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        mostrarDialogObservacao = false
+                        desvioSelecionadoParaObservacao = null
+                    }
+                ) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
     if (servicoPendenteExclusao != null) {
         AlertDialog(
             onDismissRequest = {
@@ -1873,23 +1951,23 @@ fun DiarioEtapasScreen(
 private fun EtapaCard(
     numero: Int,
     titulo: String,
-    status: String,
+    status: StatusEtapa,
     expandida: Boolean,
     onClick: () -> Unit,
     conteudo: (@Composable () -> Unit)? = null
 ) {
     val corFundo = when (status) {
-        "CONCLUIDA" -> Color(0xFFDFF5E1)
-        "EM_ANDAMENTO" -> Color(0xFFFFF4CC)
-        "DISPONIVEL" -> Color(0xFFEAF2FF)
-        else -> Color(0xFFF2F2F2)
+        StatusEtapa.CONCLUIDA -> Color(0xFFDFF5E1)
+        StatusEtapa.EM_ANDAMENTO -> Color(0xFFFFF4CC)
+        StatusEtapa.DISPONIVEL -> Color(0xFFEAF2FF)
+        StatusEtapa.BLOQUEADA -> Color(0xFFF2F2F2)
     }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 12.dp)
-            .clickable(enabled = status != "BLOQUEADA") { onClick() },
+            .clickable(enabled = status != StatusEtapa.BLOQUEADA) { onClick() },
         colors = CardDefaults.cardColors(containerColor = corFundo)
     ) {
         Column(
@@ -1934,7 +2012,8 @@ fun DesviosCard(
     viewModel: MainViewModel,
     bloqueado: Boolean,
     expandido: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onEditarObservacao: (DesvioItemEntity) -> Unit
 ) {
     var menuTipoDesvioExpandido by remember { mutableStateOf(false) }
     var codigoEmCadastro by remember { mutableStateOf("") }
@@ -1943,6 +2022,7 @@ fun DesviosCard(
     var fimEmCadastro by remember { mutableStateOf("") }
     var observacaoEmCadastro by remember { mutableStateOf("") }
     var desvioExpandidoId by remember { mutableStateOf<Long?>(null) }
+
     val context = LocalContext.current
 
     fun abrirSeletorHora(
@@ -1967,9 +2047,7 @@ fun DesviosCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .clickable { onClick() },
-
+            .padding(vertical = 8.dp),
         colors = CardDefaults.cardColors(
             containerColor =
                 if (quantidadeDesvios > 0) {
@@ -1981,183 +2059,197 @@ fun DesviosCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
 
-            Text(
-                text = "Desvios",
-                style = MaterialTheme.typography.titleMedium
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onClick() }
+            ) {
+                Text(
+                    text = "Desvios",
+                    style = MaterialTheme.typography.titleMedium
+                )
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-                if (quantidadeDesvios == 0) {
-                    "Nenhum desvio registrado."
-                } else {
-                    "Desvios registrados: $quantidadeDesvios"
-                }
-            )
+                Text(
+                    if (quantidadeDesvios == 0) {
+                        "Nenhum desvio registrado."
+                    } else {
+                        "Desvios registrados: $quantidadeDesvios"
+                    }
+                )
+            }
 
             if (expandido) {
                 Spacer(modifier = Modifier.height(12.dp))
 
                 desvios.forEach { desvio ->
-                    val estaExpandido = desvioExpandidoId == desvio.id
+                    key(desvio.id) {
+                        val estaExpandido = desvioExpandidoId == desvio.id
 
-                    val corCard = when {
-                        desvio.inicio.isBlank() -> Color(0xFFF1F1F1)
-                        desvio.fim.isBlank() -> Color(0xFFFFE8C2)
-                        else -> Color(0xFFDDF5DD)
-                    }
+                        val corCard = when {
+                            desvio.inicio.isBlank() -> Color(0xFFF1F1F1)
+                            desvio.fim.isBlank() -> Color(0xFFFFE8C2)
+                            else -> Color(0xFFDDF5DD)
+                        }
 
-                    var inicioEditado by remember(desvio.id, desvio.inicio) {
-                        mutableStateOf(desvio.inicio)
-                    }
+                        var inicioEditado by remember(desvio.id, desvio.inicio) {
+                            mutableStateOf(desvio.inicio)
+                        }
 
-                    var fimEditado by remember(desvio.id, desvio.fim) {
-                        mutableStateOf(desvio.fim)
-                    }
+                        var fimEditado by remember(desvio.id, desvio.fim) {
+                            mutableStateOf(desvio.fim)
+                        }
 
-                    var observacaoEditada by remember(desvio.id, desvio.observacao) {
-                        mutableStateOf(desvio.observacao)
-                    }
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                            colors = CardDefaults.cardColors(containerColor = corCard)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
 
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp)
-                            .clickable {
-                                desvioExpandidoId = if (estaExpandido) null else desvio.id
-                            },
-                        colors = CardDefaults.cardColors(containerColor = corCard)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-
-                            Text(
-                                text = "${desvio.codigo} - ${desvio.descricao}",
-                                style = MaterialTheme.typography.titleSmall
-                            )
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            Text(
-                                text = "Horário: ${
-                                    when {
-                                        desvio.inicio.isNotBlank() && desvio.fim.isNotBlank() ->
-                                            "${desvio.inicio} às ${desvio.fim}"
-
-                                        desvio.inicio.isNotBlank() ->
-                                            "Início ${desvio.inicio}"
-
-                                        else ->
-                                            "Não iniciado"
-                                    }
-                                }",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-
-                            if (desvio.observacao.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Obs.: ${desvio.observacao}",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-
-                            if (estaExpandido) {
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Text("Início: ${inicioEditado.ifBlank { "--:--" }}")
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            desvioExpandidoId = if (estaExpandido) null else desvio.id
+                                        }
                                 ) {
-                                    Button(
-                                        onClick = {
-                                            inicioEditado = horaAtualFormatada()
-                                        },
-                                        enabled = !bloqueado,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text("Marcar início")
-                                    }
+                                    Text(
+                                        text = "${desvio.codigo} - ${desvio.descricao}",
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
 
-                                    OutlinedButton(
-                                        onClick = {
-                                            abrirSeletorHora(inicioEditado) { hora ->
-                                                inicioEditado = hora
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    Text(
+                                        text = "Horário: ${
+                                            when {
+                                                desvio.inicio.isNotBlank() && desvio.fim.isNotBlank() ->
+                                                    "${desvio.inicio} às ${desvio.fim}"
+
+                                                desvio.inicio.isNotBlank() ->
+                                                    "Início ${desvio.inicio}"
+
+                                                else ->
+                                                    "Não iniciado"
                                             }
-                                        },
-                                        enabled = !bloqueado,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text("Editar início")
+                                        }",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+
+                                    if (desvio.observacao.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Obs.: ${desvio.observacao}",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(12.dp))
+                                if (estaExpandido) {
+                                    Spacer(modifier = Modifier.height(12.dp))
 
-                                Text("Fim: ${fimEditado.ifBlank { "--:--" }}")
+                                    Text("Início: ${inicioEditado.ifBlank { "--:--" }}")
 
-                                Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            fimEditado = horaAtualFormatada()
-                                        },
-                                        enabled = !bloqueado,
-                                        modifier = Modifier.weight(1f)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Text("Marcar fim")
+                                        Button(
+                                            onClick = {
+                                                inicioEditado = horaAtualFormatada()
+                                            },
+                                            enabled = !bloqueado,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("Marcar início")
+                                        }
+
+                                        OutlinedButton(
+                                            onClick = {
+                                                abrirSeletorHora(inicioEditado) { hora ->
+                                                    inicioEditado = hora
+                                                }
+                                            },
+                                            enabled = !bloqueado,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("Editar início")
+                                        }
                                     }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    Text("Fim: ${fimEditado.ifBlank { "--:--" }}")
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                fimEditado = horaAtualFormatada()
+                                            },
+                                            enabled = !bloqueado,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("Marcar fim")
+                                        }
+
+                                        OutlinedButton(
+                                            onClick = {
+                                                abrirSeletorHora(fimEditado) { hora ->
+                                                    fimEditado = hora
+                                                }
+                                            },
+                                            enabled = !bloqueado,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("Editar fim")
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Text(
+                                        text = "Observação: ${desvio.observacao.ifBlank { "Nenhuma observação" }}",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+
+                                    Spacer(modifier = Modifier.height(8.dp))
 
                                     OutlinedButton(
                                         onClick = {
-                                            abrirSeletorHora(fimEditado) { hora ->
-                                                fimEditado = hora
-                                            }
+                                            onEditarObservacao(desvio)
                                         },
                                         enabled = !bloqueado,
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text("Editar fim")
+                                        Text("Editar observação")
                                     }
-                                }
 
-                                Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
 
-                                OutlinedTextField(
-                                    value = observacaoEditada,
-                                    onValueChange = { observacaoEditada = it },
-                                    label = { Text("Observação (opcional)") },
-                                    enabled = !bloqueado,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Button(
-                                    onClick = {
-                                        viewModel.atualizarHorarioDesvio(
-                                            item = desvio,
-                                            novoInicio = inicioEditado,
-                                            novoFim = fimEditado
-                                        )
-                                        viewModel.atualizarObservacaoDesvio(
-                                            id = desvio.id,
-                                            texto = observacaoEditada
-                                        )
-                                        desvioExpandidoId = null
-                                    },
-                                    enabled = !bloqueado,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("Salvar alterações")
+                                    Button(
+                                        onClick = {
+                                            viewModel.atualizarHorarioDesvio(
+                                                item = desvio,
+                                                novoInicio = inicioEditado,
+                                                novoFim = fimEditado
+                                            )
+                                            desvioExpandidoId = null
+                                        },
+                                        enabled = !bloqueado,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Salvar horários")
+                                    }
                                 }
                             }
                         }

@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.diarioobras.data.ServicoAreaEntity
 import com.example.diarioobras.data.ServicoEntity
+import com.example.diarioobras.data.StatusEtapa
 import com.example.diarioobras.ui.MainViewModel
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -136,7 +137,7 @@ fun ServicoFormScreen(
         .buscarDiarioFlow(diarioId)
         .collectAsStateWithLifecycle(initialValue = null)
 
-    val modoSomenteLeitura = diario?.statusServicos == "CONCLUIDA"
+    val modoSomenteLeitura = diario?.statusServicos == StatusEtapa.CONCLUIDA
 
     var servicoIdAtual by remember { mutableLongStateOf(servicoId) }
 
