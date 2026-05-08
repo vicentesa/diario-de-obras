@@ -648,21 +648,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun marcarInicioDesvio(id: Long) {
-        viewModelScope.launch {
-            dao.atualizarInicioDesvio(id, horaAtual())
-        }
-    }
-
-    fun marcarFimDesvio(id: Long) {
-        viewModelScope.launch {
-            dao.atualizarFimDesvio(id, horaAtual())
-        }
-    }
-
     fun atualizarObservacaoDesvio(id: Long, texto: String) {
         viewModelScope.launch {
-            dao.atualizarObservacaoDesvio(id, texto)
+            db.withTransaction {
+                val desvio = dao.buscarDesvioPorId(id) ?: return@withTransaction
+                val diario = dao.buscarDiarioPorId(desvio.diarioId) ?: return@withTransaction
+                if (diario.diarioFechado || diario.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
+                    return@withTransaction
+                }
+                dao.atualizarObservacaoDesvio(id, texto)
+            }
         }
     }
 
