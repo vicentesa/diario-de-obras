@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import com.example.diarioobras.data.AppDatabase
 import com.example.diarioobras.data.StatusEtapa
 import com.example.diarioobras.data.CarregamentoItemEntity
@@ -31,7 +32,8 @@ import java.util.Locale
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val dao = AppDatabase.getInstance(application).obrasDao()
+    private val db = AppDatabase.getInstance(application)
+    private val dao = db.obrasDao()
 
     suspend fun buscarDiarioPorId(diarioId: Long) = dao.buscarDiarioPorId(diarioId)
     suspend fun buscarObraPorId(obraId: Long) = dao.buscarObraPorId(obraId)
@@ -57,54 +59,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         servicoId: Long,
         areas: List<ServicoAreaEntity>
     ) {
-        dao.excluirServicoAreasPorServicoId(servicoId)
+        db.withTransaction {
+            dao.excluirServicoAreasPorServicoId(servicoId)
 
-        if (areas.isNotEmpty()) {
-            dao.inserirServicoAreas(
-                areas.mapIndexed { index, area ->
-                    area.copy(
-                        id = 0,
-                        servicoId = servicoId,
-                        ordem = index + 1
-                    )
-                }
-            )
+            if (areas.isNotEmpty()) {
+                dao.inserirServicoAreas(
+                    areas.mapIndexed { index, area ->
+                        area.copy(
+                            id = 0,
+                            servicoId = servicoId,
+                            ordem = index + 1
+                        )
+                    }
+                )
+            }
         }
     }
+
     suspend fun buscarDesvioPorId(id: Long) = dao.buscarDesvioPorId(id)
+
     suspend fun salvarServicoCompleto(
         servico: ServicoEntity,
         areas: List<ServicoAreaEntity>
     ): Long {
-        val servicoId = if (servico.id == 0L) {
-            dao.inserirServico(servico.copy(id = 0))
-        } else {
-            dao.atualizarServico(servico)
-            servico.id
-        }
+        return db.withTransaction {
+            val servicoId = if (servico.id == 0L) {
+                dao.inserirServico(servico.copy(id = 0))
+            } else {
+                dao.atualizarServico(servico)
+                servico.id
+            }
 
-        substituirAreasDoServico(
-            servicoId = servicoId,
-            areas = areas.map { it.copy(servicoId = servicoId) }
-        )
-
-        val diarioAtual = dao.buscarDiarioPorId(servico.diarioId)
-        if (diarioAtual != null && diarioAtual.statusServicos != StatusEtapa.CONCLUIDA) {
-            dao.atualizarStatusEtapasDiario(
-                diarioId = servico.diarioId,
-                etapaAtual = 4,
-                statusEquipe = diarioAtual.statusEquipe,
-                statusEquipamento = diarioAtual.statusEquipamento,
-                statusCarregamento = diarioAtual.statusCarregamento,
-                statusServicos = StatusEtapa.EM_ANDAMENTO,
-                statusFechamentoServicos = StatusEtapa.DISPONIVEL,
-                statusRetornoBase = diarioAtual.statusRetornoBase,
-                statusFechamentoDo = diarioAtual.statusFechamentoDo,
-                diarioFechado = diarioAtual.diarioFechado
+            substituirAreasDoServico(
+                servicoId = servicoId,
+                areas = areas.map { it.copy(servicoId = servicoId) }
             )
-        }
 
-        return servicoId
+            val diarioAtual = dao.buscarDiarioPorId(servico.diarioId)
+            if (diarioAtual != null && diarioAtual.statusServicos != StatusEtapa.CONCLUIDA) {
+                dao.atualizarStatusEtapasDiario(
+                    diarioId = servico.diarioId,
+                    etapaAtual = 4,
+                    statusEquipe = diarioAtual.statusEquipe,
+                    statusEquipamento = diarioAtual.statusEquipamento,
+                    statusCarregamento = diarioAtual.statusCarregamento,
+                    statusServicos = StatusEtapa.EM_ANDAMENTO,
+                    statusFechamentoServicos = StatusEtapa.DISPONIVEL,
+                    statusRetornoBase = diarioAtual.statusRetornoBase,
+                    statusFechamentoDo = diarioAtual.statusFechamentoDo,
+                    diarioFechado = diarioAtual.diarioFechado
+                )
+            }
+
+            servicoId
+        }
     }
 
     fun excluirServico(servico: ServicoEntity) {
@@ -115,33 +123,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun encerrarServicos(diarioId: Long, proximoDestino: String) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
-            val horaAtual = horaAtual()
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
+                val horaAtual = horaAtual()
 
-            dao.atualizarIntervaloEFechamentoServicos(
-                diarioId = diarioId,
-                inicioIntervalo = diarioAtual.inicioIntervalo,
-                fimIntervalo = diarioAtual.fimIntervalo,
-                observacaoIntervalo = diarioAtual.observacaoIntervalo,
-                intervaloRegistrado = diarioAtual.intervaloRegistrado,
-                horarioFechamentoServicos = horaAtual,
-                observacaoFechamentoServicos = diarioAtual.observacaoFechamentoServicos,
-                proximoDestino = proximoDestino,
-                fechamentoServicosConcluido = true
-            )
+                dao.atualizarIntervaloEFechamentoServicos(
+                    diarioId = diarioId,
+                    inicioIntervalo = diarioAtual.inicioIntervalo,
+                    fimIntervalo = diarioAtual.fimIntervalo,
+                    observacaoIntervalo = diarioAtual.observacaoIntervalo,
+                    intervaloRegistrado = diarioAtual.intervaloRegistrado,
+                    horarioFechamentoServicos = horaAtual,
+                    observacaoFechamentoServicos = diarioAtual.observacaoFechamentoServicos,
+                    proximoDestino = proximoDestino,
+                    fechamentoServicosConcluido = true
+                )
 
-            dao.atualizarStatusEtapasDiario(
-                diarioId = diarioId,
-                etapaAtual = 6,
-                statusEquipe = diarioAtual.statusEquipe,
-                statusEquipamento = diarioAtual.statusEquipamento,
-                statusCarregamento = diarioAtual.statusCarregamento,
-                statusServicos = StatusEtapa.CONCLUIDA,
-                statusFechamentoServicos = StatusEtapa.CONCLUIDA,
-                statusRetornoBase = StatusEtapa.DISPONIVEL,
-                statusFechamentoDo = diarioAtual.statusFechamentoDo,
-                diarioFechado = diarioAtual.diarioFechado
-            )
+                dao.atualizarStatusEtapasDiario(
+                    diarioId = diarioId,
+                    etapaAtual = 6,
+                    statusEquipe = diarioAtual.statusEquipe,
+                    statusEquipamento = diarioAtual.statusEquipamento,
+                    statusCarregamento = diarioAtual.statusCarregamento,
+                    statusServicos = StatusEtapa.CONCLUIDA,
+                    statusFechamentoServicos = StatusEtapa.CONCLUIDA,
+                    statusRetornoBase = StatusEtapa.DISPONIVEL,
+                    statusFechamentoDo = diarioAtual.statusFechamentoDo,
+                    diarioFechado = diarioAtual.diarioFechado
+                )
+            }
         }
     }
 
@@ -233,32 +243,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         equipamentosAuxiliares: List<String>
     ) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
 
-            dao.atualizarDiario(
-                diarioAtual.copy(
-                    encarregado = encarregado,
-                    equipe = equipe.joinToString(" / "),
-                    veiculo = veiculo,
-                    equipamentosAuxiliares = equipamentosAuxiliares.joinToString(" / "),
-                    localCarregamento = diarioAtual.localCarregamento,
-                    pesoLiquidoTon = diarioAtual.pesoLiquidoTon,
-                    fotoTicketUri = diarioAtual.fotoTicketUri
+                dao.atualizarDiario(
+                    diarioAtual.copy(
+                        encarregado = encarregado,
+                        equipe = equipe.joinToString(" / "),
+                        veiculo = veiculo,
+                        equipamentosAuxiliares = equipamentosAuxiliares.joinToString(" / "),
+                        localCarregamento = diarioAtual.localCarregamento,
+                        pesoLiquidoTon = diarioAtual.pesoLiquidoTon,
+                        fotoTicketUri = diarioAtual.fotoTicketUri
+                    )
                 )
-            )
 
-            dao.atualizarStatusEtapasDiario(
-                diarioId = diarioId,
-                etapaAtual = 2,
-                statusEquipe = StatusEtapa.CONCLUIDA,
-                statusEquipamento = StatusEtapa.DISPONIVEL,
-                statusCarregamento = diarioAtual.statusCarregamento,
-                statusServicos = diarioAtual.statusServicos,
-                statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
-                statusRetornoBase = diarioAtual.statusRetornoBase,
-                statusFechamentoDo = diarioAtual.statusFechamentoDo,
-                diarioFechado = diarioAtual.diarioFechado
-            )
+                dao.atualizarStatusEtapasDiario(
+                    diarioId = diarioId,
+                    etapaAtual = 2,
+                    statusEquipe = StatusEtapa.CONCLUIDA,
+                    statusEquipamento = StatusEtapa.DISPONIVEL,
+                    statusCarregamento = diarioAtual.statusCarregamento,
+                    statusServicos = diarioAtual.statusServicos,
+                    statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
+                    statusRetornoBase = diarioAtual.statusRetornoBase,
+                    statusFechamentoDo = diarioAtual.statusFechamentoDo,
+                    diarioFechado = diarioAtual.diarioFechado
+                )
+            }
         }
     }
 
@@ -269,28 +281,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         equipamentosCompactacao: List<String>
     ) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
 
-            dao.atualizarDiario(
-                diarioAtual.copy(
-                    veiculo = veiculo,
-                    equipamentosAuxiliares = equipamentosAuxiliares.joinToString(" / "),
-                    equipamentosCompactacao = equipamentosCompactacao.joinToString(" / ")
+                dao.atualizarDiario(
+                    diarioAtual.copy(
+                        veiculo = veiculo,
+                        equipamentosAuxiliares = equipamentosAuxiliares.joinToString(" / "),
+                        equipamentosCompactacao = equipamentosCompactacao.joinToString(" / ")
+                    )
                 )
-            )
 
-            dao.atualizarStatusEtapasDiario(
-                diarioId = diarioId,
-                etapaAtual = 3,
-                statusEquipe = diarioAtual.statusEquipe,
-                statusEquipamento = StatusEtapa.CONCLUIDA,
-                statusCarregamento = StatusEtapa.DISPONIVEL,
-                statusServicos = diarioAtual.statusServicos,
-                statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
-                statusRetornoBase = diarioAtual.statusRetornoBase,
-                statusFechamentoDo = diarioAtual.statusFechamentoDo,
-                diarioFechado = diarioAtual.diarioFechado
-            )
+                dao.atualizarStatusEtapasDiario(
+                    diarioId = diarioId,
+                    etapaAtual = 3,
+                    statusEquipe = diarioAtual.statusEquipe,
+                    statusEquipamento = StatusEtapa.CONCLUIDA,
+                    statusCarregamento = StatusEtapa.DISPONIVEL,
+                    statusServicos = diarioAtual.statusServicos,
+                    statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
+                    statusRetornoBase = diarioAtual.statusRetornoBase,
+                    statusFechamentoDo = diarioAtual.statusFechamentoDo,
+                    diarioFechado = diarioAtual.diarioFechado
+                )
+            }
         }
     }
 
@@ -479,37 +493,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         fotoUri: String? = null
     ) {
         viewModelScope.launch {
-            dao.inserirServico(
-                ServicoEntity(
-                    diarioId = diarioId,
-                    ordemServico = ordemServico,
-                    numeroProtocolo = numeroProtocolo,
-                    endereco = endereco,
-                    comprimento = comprimento,
-                    largura = largura,
-                    altura = altura,
-                    inicio = inicio,
-                    fim = fim,
-                    latitude = latitude,
-                    longitude = longitude,
-                    fotoUri = fotoUri
+            db.withTransaction {
+                dao.inserirServico(
+                    ServicoEntity(
+                        diarioId = diarioId,
+                        ordemServico = ordemServico,
+                        numeroProtocolo = numeroProtocolo,
+                        endereco = endereco,
+                        comprimento = comprimento,
+                        largura = largura,
+                        altura = altura,
+                        inicio = inicio,
+                        fim = fim,
+                        latitude = latitude,
+                        longitude = longitude,
+                        fotoUri = fotoUri
+                    )
                 )
-            )
 
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
 
-            dao.atualizarStatusEtapasDiario(
-                diarioId = diarioId,
-                etapaAtual = 4,
-                statusEquipe = diarioAtual.statusEquipe,
-                statusEquipamento = diarioAtual.statusEquipamento,
-                statusCarregamento = diarioAtual.statusCarregamento,
-                statusServicos = StatusEtapa.EM_ANDAMENTO,
-                statusFechamentoServicos = StatusEtapa.DISPONIVEL,
-                statusRetornoBase = diarioAtual.statusRetornoBase,
-                statusFechamentoDo = diarioAtual.statusFechamentoDo,
-                diarioFechado = diarioAtual.diarioFechado
-            )
+                dao.atualizarStatusEtapasDiario(
+                    diarioId = diarioId,
+                    etapaAtual = 4,
+                    statusEquipe = diarioAtual.statusEquipe,
+                    statusEquipamento = diarioAtual.statusEquipamento,
+                    statusCarregamento = diarioAtual.statusCarregamento,
+                    statusServicos = StatusEtapa.EM_ANDAMENTO,
+                    statusFechamentoServicos = StatusEtapa.DISPONIVEL,
+                    statusRetornoBase = diarioAtual.statusRetornoBase,
+                    statusFechamentoDo = diarioAtual.statusFechamentoDo,
+                    diarioFechado = diarioAtual.diarioFechado
+                )
+            }
         }
     }
 
@@ -523,70 +539,77 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         observacaoFechamentoServicos: String
     ) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
 
-            dao.atualizarIntervaloEFechamentoServicos(
-                diarioId = diarioId,
-                inicioIntervalo = inicioIntervalo,
-                fimIntervalo = fimIntervalo,
-                observacaoIntervalo = observacaoIntervalo,
-                intervaloRegistrado = intervaloRegistrado,
-                horarioFechamentoServicos = horarioFechamentoServicos,
-                observacaoFechamentoServicos = observacaoFechamentoServicos,
-                proximoDestino = diarioAtual.proximoDestino,
-                fechamentoServicosConcluido = true
-            )
+                dao.atualizarIntervaloEFechamentoServicos(
+                    diarioId = diarioId,
+                    inicioIntervalo = inicioIntervalo,
+                    fimIntervalo = fimIntervalo,
+                    observacaoIntervalo = observacaoIntervalo,
+                    intervaloRegistrado = intervaloRegistrado,
+                    horarioFechamentoServicos = horarioFechamentoServicos,
+                    observacaoFechamentoServicos = observacaoFechamentoServicos,
+                    proximoDestino = diarioAtual.proximoDestino,
+                    fechamentoServicosConcluido = true
+                )
 
-            dao.atualizarStatusEtapasDiario(
-                diarioId = diarioId,
-                etapaAtual = 6,
-                statusEquipe = diarioAtual.statusEquipe,
-                statusEquipamento = diarioAtual.statusEquipamento,
-                statusCarregamento = diarioAtual.statusCarregamento,
-                statusServicos = StatusEtapa.CONCLUIDA,
-                statusFechamentoServicos = StatusEtapa.CONCLUIDA,
-                statusRetornoBase = StatusEtapa.DISPONIVEL,
-                statusFechamentoDo = diarioAtual.statusFechamentoDo,
-                diarioFechado = diarioAtual.diarioFechado
-            )
+                dao.atualizarStatusEtapasDiario(
+                    diarioId = diarioId,
+                    etapaAtual = 6,
+                    statusEquipe = diarioAtual.statusEquipe,
+                    statusEquipamento = diarioAtual.statusEquipamento,
+                    statusCarregamento = diarioAtual.statusCarregamento,
+                    statusServicos = StatusEtapa.CONCLUIDA,
+                    statusFechamentoServicos = StatusEtapa.CONCLUIDA,
+                    statusRetornoBase = StatusEtapa.DISPONIVEL,
+                    statusFechamentoDo = diarioAtual.statusFechamentoDo,
+                    diarioFechado = diarioAtual.diarioFechado
+                )
+            }
         }
     }
 
     fun marcarSaidaEtapa6(diarioId: Long) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
 
-            dao.atualizarRetornoEFechamentoDo(
-                diarioId = diarioId,
-                saidaRetornoBase = horaAtual(),
-                chegadaBase = diarioAtual.chegadaBase,
-                observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
-                retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
-                observacaoFinalDo = diarioAtual.observacaoFinalDo,
-                fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
-                enderecoHospedagem = diarioAtual.enderecoHospedagem,
-                diarioFechado = diarioAtual.diarioFechado
-            )
+                dao.atualizarRetornoEFechamentoDo(
+                    diarioId = diarioId,
+                    saidaRetornoBase = horaAtual(),
+                    chegadaBase = diarioAtual.chegadaBase,
+                    observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
+                    retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
+                    observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                    fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
+                    enderecoHospedagem = diarioAtual.enderecoHospedagem,
+                    diarioFechado = diarioAtual.diarioFechado
+                )
+            }
         }
     }
 
     fun marcarChegadaEtapa6(diarioId: Long) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
 
-            dao.atualizarRetornoEFechamentoDo(
-                diarioId = diarioId,
-                saidaRetornoBase = diarioAtual.saidaRetornoBase,
-                chegadaBase = horaAtual(),
-                observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
-                retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
-                observacaoFinalDo = diarioAtual.observacaoFinalDo,
-                fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
-                enderecoHospedagem = diarioAtual.enderecoHospedagem,
-                diarioFechado = diarioAtual.diarioFechado
-            )
+                dao.atualizarRetornoEFechamentoDo(
+                    diarioId = diarioId,
+                    saidaRetornoBase = diarioAtual.saidaRetornoBase,
+                    chegadaBase = horaAtual(),
+                    observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
+                    retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
+                    observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                    fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
+                    enderecoHospedagem = diarioAtual.enderecoHospedagem,
+                    diarioFechado = diarioAtual.diarioFechado
+                )
+            }
         }
     }
+
     fun concluirRetornoBase(
         diarioId: Long,
         saidaRetornoBase: String?,
@@ -594,32 +617,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         observacaoRetornoBase: String
     ) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
 
-            dao.atualizarRetornoEFechamentoDo(
-                diarioId = diarioId,
-                saidaRetornoBase = saidaRetornoBase,
-                chegadaBase = chegadaBase,
-                observacaoRetornoBase = observacaoRetornoBase,
-                retornoBaseConcluido = true,
-                observacaoFinalDo = diarioAtual.observacaoFinalDo,
-                fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
-                enderecoHospedagem = diarioAtual.enderecoHospedagem,
-                diarioFechado = diarioAtual.diarioFechado
-            )
+                dao.atualizarRetornoEFechamentoDo(
+                    diarioId = diarioId,
+                    saidaRetornoBase = saidaRetornoBase,
+                    chegadaBase = chegadaBase,
+                    observacaoRetornoBase = observacaoRetornoBase,
+                    retornoBaseConcluido = true,
+                    observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                    fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
+                    enderecoHospedagem = diarioAtual.enderecoHospedagem,
+                    diarioFechado = diarioAtual.diarioFechado
+                )
 
-            dao.atualizarStatusEtapasDiario(
-                diarioId = diarioId,
-                etapaAtual = 7,
-                statusEquipe = diarioAtual.statusEquipe,
-                statusEquipamento = diarioAtual.statusEquipamento,
-                statusCarregamento = diarioAtual.statusCarregamento,
-                statusServicos = diarioAtual.statusServicos,
-                statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
-                statusRetornoBase = StatusEtapa.CONCLUIDA,
-                statusFechamentoDo = StatusEtapa.DISPONIVEL,
-                diarioFechado = diarioAtual.diarioFechado
-            )
+                dao.atualizarStatusEtapasDiario(
+                    diarioId = diarioId,
+                    etapaAtual = 7,
+                    statusEquipe = diarioAtual.statusEquipe,
+                    statusEquipamento = diarioAtual.statusEquipamento,
+                    statusCarregamento = diarioAtual.statusCarregamento,
+                    statusServicos = diarioAtual.statusServicos,
+                    statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
+                    statusRetornoBase = StatusEtapa.CONCLUIDA,
+                    statusFechamentoDo = StatusEtapa.DISPONIVEL,
+                    diarioFechado = diarioAtual.diarioFechado
+                )
+            }
         }
     }
 
@@ -646,32 +671,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         observacaoFinalDo: String
     ) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
 
-            dao.atualizarRetornoEFechamentoDo(
-                diarioId = diarioId,
-                saidaRetornoBase = diarioAtual.saidaRetornoBase,
-                chegadaBase = diarioAtual.chegadaBase,
-                observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
-                retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
-                observacaoFinalDo = observacaoFinalDo,
-                fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
-                enderecoHospedagem = diarioAtual.enderecoHospedagem,
-                diarioFechado = true
-            )
+                dao.atualizarRetornoEFechamentoDo(
+                    diarioId = diarioId,
+                    saidaRetornoBase = diarioAtual.saidaRetornoBase,
+                    chegadaBase = diarioAtual.chegadaBase,
+                    observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
+                    retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
+                    observacaoFinalDo = observacaoFinalDo,
+                    fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
+                    enderecoHospedagem = diarioAtual.enderecoHospedagem,
+                    diarioFechado = true
+                )
 
-            dao.atualizarStatusEtapasDiario(
-                diarioId = diarioId,
-                etapaAtual = 7,
-                statusEquipe = diarioAtual.statusEquipe,
-                statusEquipamento = diarioAtual.statusEquipamento,
-                statusCarregamento = diarioAtual.statusCarregamento,
-                statusServicos = diarioAtual.statusServicos,
-                statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
-                statusRetornoBase = diarioAtual.statusRetornoBase,
-                statusFechamentoDo = StatusEtapa.CONCLUIDA,
-                diarioFechado = true
-            )
+                dao.atualizarStatusEtapasDiario(
+                    diarioId = diarioId,
+                    etapaAtual = 7,
+                    statusEquipe = diarioAtual.statusEquipe,
+                    statusEquipamento = diarioAtual.statusEquipamento,
+                    statusCarregamento = diarioAtual.statusCarregamento,
+                    statusServicos = diarioAtual.statusServicos,
+                    statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
+                    statusRetornoBase = diarioAtual.statusRetornoBase,
+                    statusFechamentoDo = StatusEtapa.CONCLUIDA,
+                    diarioFechado = true
+                )
+            }
         }
     }
 
@@ -696,43 +723,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         observacao: String
     ) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
-            if (diarioAtual.diarioFechado || diarioAtual.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
-                return@launch
-            }
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
+                if (diarioAtual.diarioFechado || diarioAtual.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
+                    return@withTransaction
+                }
 
-            dao.inserirDesvio(
-                DesvioItemEntity(
-                    diarioId = diarioId,
-                    codigo = codigo,
-                    descricao = descricao,
-                    inicio = inicio,
-                    fim = fim,
-                    observacao = observacao
+                dao.inserirDesvio(
+                    DesvioItemEntity(
+                        diarioId = diarioId,
+                        codigo = codigo,
+                        descricao = descricao,
+                        inicio = inicio,
+                        fim = fim,
+                        observacao = observacao
+                    )
                 )
-            )
+            }
         }
     }
 
     fun marcarInicioDesvio(item: DesvioItemEntity) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(item.diarioId) ?: return@launch
-            if (diarioAtual.diarioFechado || diarioAtual.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
-                return@launch
-            }
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(item.diarioId) ?: return@withTransaction
+                if (diarioAtual.diarioFechado || diarioAtual.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
+                    return@withTransaction
+                }
 
-            dao.atualizarDesvio(item.copy(inicio = horaAtual()))
+                dao.atualizarDesvio(item.copy(inicio = horaAtual()))
+            }
         }
     }
 
     fun marcarFimDesvio(item: DesvioItemEntity) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(item.diarioId) ?: return@launch
-            if (diarioAtual.diarioFechado || diarioAtual.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
-                return@launch
-            }
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(item.diarioId) ?: return@withTransaction
+                if (diarioAtual.diarioFechado || diarioAtual.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
+                    return@withTransaction
+                }
 
-            dao.atualizarDesvio(item.copy(fim = horaAtual()))
+                dao.atualizarDesvio(item.copy(fim = horaAtual()))
+            }
         }
     }
 
@@ -742,17 +775,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         novoFim: String?
     ) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(item.diarioId) ?: return@launch
-            if (diarioAtual.diarioFechado || diarioAtual.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
-                return@launch
-            }
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(item.diarioId) ?: return@withTransaction
+                if (diarioAtual.diarioFechado || diarioAtual.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
+                    return@withTransaction
+                }
 
-            dao.atualizarDesvio(
-                item.copy(
-                    inicio = novoInicio.orEmpty(),
-                    fim = novoFim.orEmpty()
+                dao.atualizarDesvio(
+                    item.copy(
+                        inicio = novoInicio.orEmpty(),
+                        fim = novoFim.orEmpty()
+                    )
                 )
-            )
+            }
         }
     }
 
@@ -763,28 +798,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         fotoTicketUri: String
     ) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
 
-            dao.atualizarDiario(
-                diarioAtual.copy(
-                    localCarregamento = localCarregamento,
-                    pesoLiquidoTon = pesoLiquidoTon,
-                    fotoTicketUri = fotoTicketUri
+                dao.atualizarDiario(
+                    diarioAtual.copy(
+                        localCarregamento = localCarregamento,
+                        pesoLiquidoTon = pesoLiquidoTon,
+                        fotoTicketUri = fotoTicketUri
+                    )
                 )
-            )
 
-            dao.atualizarStatusEtapasDiario(
-                diarioId = diarioId,
-                etapaAtual = 4,
-                statusEquipe = diarioAtual.statusEquipe,
-                statusEquipamento = diarioAtual.statusEquipamento,
-                statusCarregamento = StatusEtapa.CONCLUIDA,
-                statusServicos = StatusEtapa.DISPONIVEL,
-                statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
-                statusRetornoBase = diarioAtual.statusRetornoBase,
-                statusFechamentoDo = diarioAtual.statusFechamentoDo,
-                diarioFechado = diarioAtual.diarioFechado
-            )
+                dao.atualizarStatusEtapasDiario(
+                    diarioId = diarioId,
+                    etapaAtual = 4,
+                    statusEquipe = diarioAtual.statusEquipe,
+                    statusEquipamento = diarioAtual.statusEquipamento,
+                    statusCarregamento = StatusEtapa.CONCLUIDA,
+                    statusServicos = StatusEtapa.DISPONIVEL,
+                    statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
+                    statusRetornoBase = diarioAtual.statusRetornoBase,
+                    statusFechamentoDo = diarioAtual.statusFechamentoDo,
+                    diarioFechado = diarioAtual.diarioFechado
+                )
+            }
         }
     }
 
@@ -863,18 +900,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         fechamentoServicosConcluido: Boolean
     ) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
-            dao.atualizarIntervaloEFechamentoServicos(
-                diarioId = diarioId,
-                inicioIntervalo = inicioIntervalo,
-                fimIntervalo = fimIntervalo,
-                observacaoIntervalo = observacaoIntervalo,
-                intervaloRegistrado = intervaloRegistrado,
-                horarioFechamentoServicos = horarioFechamentoServicos,
-                observacaoFechamentoServicos = observacaoFechamentoServicos,
-                proximoDestino = diarioAtual.proximoDestino,
-                fechamentoServicosConcluido = fechamentoServicosConcluido
-            )
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
+                dao.atualizarIntervaloEFechamentoServicos(
+                    diarioId = diarioId,
+                    inicioIntervalo = inicioIntervalo,
+                    fimIntervalo = fimIntervalo,
+                    observacaoIntervalo = observacaoIntervalo,
+                    intervaloRegistrado = intervaloRegistrado,
+                    horarioFechamentoServicos = horarioFechamentoServicos,
+                    observacaoFechamentoServicos = observacaoFechamentoServicos,
+                    proximoDestino = diarioAtual.proximoDestino,
+                    fechamentoServicosConcluido = fechamentoServicosConcluido
+                )
+            }
         }
     }
 
@@ -888,18 +927,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         diarioFechado: Boolean
     ) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
-            dao.atualizarRetornoEFechamentoDo(
-                diarioId = diarioId,
-                saidaRetornoBase = saidaRetornoBase,
-                chegadaBase = chegadaBase,
-                observacaoRetornoBase = observacaoRetornoBase,
-                retornoBaseConcluido = retornoBaseConcluido,
-                observacaoFinalDo = observacaoFinalDo,
-                fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
-                enderecoHospedagem = diarioAtual.enderecoHospedagem,
-                diarioFechado = diarioFechado
-            )
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
+                dao.atualizarRetornoEFechamentoDo(
+                    diarioId = diarioId,
+                    saidaRetornoBase = saidaRetornoBase,
+                    chegadaBase = chegadaBase,
+                    observacaoRetornoBase = observacaoRetornoBase,
+                    retornoBaseConcluido = retornoBaseConcluido,
+                    observacaoFinalDo = observacaoFinalDo,
+                    fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
+                    enderecoHospedagem = diarioAtual.enderecoHospedagem,
+                    diarioFechado = diarioFechado
+                )
+            }
         }
     }
 
@@ -909,19 +950,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         endereco: String
     ) {
         viewModelScope.launch {
-            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@launch
+            db.withTransaction {
+                val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
 
-            dao.atualizarRetornoEFechamentoDo(
-                diarioId = diarioId,
-                saidaRetornoBase = diarioAtual.saidaRetornoBase,
-                chegadaBase = diarioAtual.chegadaBase,
-                observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
-                retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
-                observacaoFinalDo = diarioAtual.observacaoFinalDo,
-                fotoHospedagemPath = caminhoFoto,
-                enderecoHospedagem = endereco,
-                diarioFechado = diarioAtual.diarioFechado
-            )
+                dao.atualizarRetornoEFechamentoDo(
+                    diarioId = diarioId,
+                    saidaRetornoBase = diarioAtual.saidaRetornoBase,
+                    chegadaBase = diarioAtual.chegadaBase,
+                    observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
+                    retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
+                    observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                    fotoHospedagemPath = caminhoFoto,
+                    enderecoHospedagem = endereco,
+                    diarioFechado = diarioAtual.diarioFechado
+                )
+            }
         }
     }
 
@@ -1084,102 +1127,87 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         onNovoDiarioCriado: (Long) -> Unit
     ) {
         viewModelScope.launch {
+            db.withTransaction {
+                val diarioOrigem = dao.buscarDiarioPorId(diarioOrigemId) ?: return@withTransaction
 
-            val diarioOrigem = dao.buscarDiarioPorId(diarioOrigemId) ?: return@launch
+                // 1. Criar novo diário
+                val novoDiarioId = dao.inserirDiario(
+                    DiarioEntity(
+                        obraId = obraDestinoId,
+                        data = diarioOrigem.data,
 
-            val agora = horaAtual()
+                        encarregado = diarioOrigem.encarregado,
+                        equipe = diarioOrigem.equipe,
 
-            // 1. Criar novo diário
-            val novoDiarioId = dao.inserirDiario(
-                DiarioEntity(
-                    obraId = obraDestinoId,
-                    data = diarioOrigem.data,
+                        veiculo = diarioOrigem.veiculo,
+                        equipamentosAuxiliares = diarioOrigem.equipamentosAuxiliares,
 
-                    encarregado = diarioOrigem.encarregado,
-                    equipe = diarioOrigem.equipe,
+                        localCarregamento = diarioOrigem.localCarregamento,
+                        pesoLiquidoTon = diarioOrigem.pesoLiquidoTon,
+                        fotoTicketUri = diarioOrigem.fotoTicketUri,
 
-                    veiculo = diarioOrigem.veiculo,
-                    equipamentosAuxiliares = diarioOrigem.equipamentosAuxiliares,
+                        statusEquipe = StatusEtapa.CONCLUIDA,
+                        statusEquipamento = StatusEtapa.CONCLUIDA,
+                        statusCarregamento = StatusEtapa.CONCLUIDA,
+                        statusServicos = StatusEtapa.EM_ANDAMENTO,
 
-                    localCarregamento = diarioOrigem.localCarregamento,
-                    pesoLiquidoTon = diarioOrigem.pesoLiquidoTon,
-                    fotoTicketUri = diarioOrigem.fotoTicketUri,
+                        etapaAtual = 4,
 
-                    statusEquipe = StatusEtapa.CONCLUIDA,
-                    statusEquipamento = StatusEtapa.CONCLUIDA,
-                    statusCarregamento = StatusEtapa.CONCLUIDA,
-                    statusServicos = StatusEtapa.EM_ANDAMENTO,
-
-                    etapaAtual = 4,
-
-                    sincronizado = false
-                )
-            )
-            onNovoDiarioCriado(novoDiarioId)
-
-            // 2. Criar deslocamentos padrão (1 a 9)
-            val deslocamentosPadrao = listOf(
-                "Batendo ponto na entrada",
-                "Organizando materiais e ferramentas (Manhã)",
-                "A caminho da Usina",
-                "Chegada na Usina",
-                "Carregando asfalto",
-                "Término do carregamento",
-                "Pesagem do caminhão carregado",
-                "Saída da Usina para o trecho",
-                "Chegada no trecho"
-            )
-
-            deslocamentosPadrao.forEachIndexed { index, titulo ->
-                dao.inserirDeslocamento(
-                    DeslocamentoItemEntity(
-                        diarioId = novoDiarioId,
-                        ordem = index + 1,
-                        titulo = titulo,
-                        inicio = if (index == 8) diarioOrigem.chegadaBase else "", // 👈 ETAPA 4
-                        fim = ""
+                        sincronizado = false
                     )
                 )
+                onNovoDiarioCriado(novoDiarioId)
+
+                // 2. Criar deslocamentos padrão (1 a 9)
+                val deslocamentosPadrao = listOf(
+                    "Batendo ponto na entrada",
+                    "Organizando materiais e ferramentas (Manhã)",
+                    "A caminho da Usina",
+                    "Chegada na Usina",
+                    "Carregando asfalto",
+                    "Término do carregamento",
+                    "Pesagem do caminhão carregado",
+                    "Saída da Usina para o trecho",
+                    "Chegada no trecho"
+                )
+
+                deslocamentosPadrao.forEachIndexed { index, titulo ->
+                    dao.inserirDeslocamento(
+                        DeslocamentoItemEntity(
+                            diarioId = novoDiarioId,
+                            ordem = index + 1,
+                            titulo = titulo,
+                            inicio = if (index == 8) diarioOrigem.chegadaBase else "",
+                            fim = ""
+                        )
+                    )
+                }
+
+                // 3. Concluir etapa 6 no diário original
+                dao.atualizarRetornoEFechamentoDo(
+                    diarioId = diarioOrigemId,
+                    saidaRetornoBase = diarioOrigem.saidaRetornoBase,
+                    chegadaBase = diarioOrigem.chegadaBase,
+                    observacaoRetornoBase = "Continua no diário do contrato: $contratoDestinoDescricao",
+                    retornoBaseConcluido = true,
+                    observacaoFinalDo = diarioOrigem.observacaoFinalDo,
+                    fotoHospedagemPath = diarioOrigem.fotoHospedagemPath,
+                    enderecoHospedagem = diarioOrigem.enderecoHospedagem,
+                    diarioFechado = diarioOrigem.diarioFechado
+                )
+                dao.atualizarStatusEtapasDiario(
+                    diarioId = diarioOrigemId,
+                    etapaAtual = 7,
+                    statusEquipe = diarioOrigem.statusEquipe,
+                    statusEquipamento = diarioOrigem.statusEquipamento,
+                    statusCarregamento = diarioOrigem.statusCarregamento,
+                    statusServicos = diarioOrigem.statusServicos,
+                    statusFechamentoServicos = diarioOrigem.statusFechamentoServicos,
+                    statusRetornoBase = StatusEtapa.CONCLUIDA,
+                    statusFechamentoDo = StatusEtapa.DISPONIVEL,
+                    diarioFechado = diarioOrigem.diarioFechado
+                )
             }
-
-            // 3. Copiar carregamentos
-            //val carregamentos = dao.buscarCarregamentosPorDiario(diarioOrigemId)
-
-            //carregamentos.forEach {
-            //    dao.inserirCarregamento(
-            //        it.copy(
-            //            id = 0,
-            //            diarioId = novoDiarioId
-            //        )
-            //    )
-            //}
-
-            // 4. (opcional futuro) copiar equipe detalhada, serviços, etc.
-
-            // 5. Concluir etapa 6 no diário original
-            dao.atualizarRetornoEFechamentoDo(
-                diarioId = diarioOrigemId,
-                saidaRetornoBase = diarioOrigem.saidaRetornoBase,
-                chegadaBase = diarioOrigem.chegadaBase,
-                observacaoRetornoBase = "Continua no diário do contrato: $contratoDestinoDescricao",
-                retornoBaseConcluido = true,
-                observacaoFinalDo = diarioOrigem.observacaoFinalDo,
-                fotoHospedagemPath = diarioOrigem.fotoHospedagemPath,
-                enderecoHospedagem = diarioOrigem.enderecoHospedagem,
-                diarioFechado = diarioOrigem.diarioFechado
-            )
-            dao.atualizarStatusEtapasDiario(
-                diarioId = diarioOrigemId,
-                etapaAtual = 7,
-                statusEquipe = diarioOrigem.statusEquipe,
-                statusEquipamento = diarioOrigem.statusEquipamento,
-                statusCarregamento = diarioOrigem.statusCarregamento,
-                statusServicos = diarioOrigem.statusServicos,
-                statusFechamentoServicos = diarioOrigem.statusFechamentoServicos,
-                statusRetornoBase = StatusEtapa.CONCLUIDA,
-                statusFechamentoDo = StatusEtapa.DISPONIVEL,
-                diarioFechado = diarioOrigem.diarioFechado
-            )
         }
     }
 }
