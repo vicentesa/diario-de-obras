@@ -18,9 +18,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DesvioItemEntity::class,
         ServicoEntity::class,
         ServicoAreaEntity::class,
-        SubservicoEntity::class
+        SubservicoEntity::class,
+        AbastecimentoItemEntity::class
     ],
-    version = 18,
+    version = 23,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -31,9 +32,54 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        // Versões 17 e 18 foram bumps sem alteração de schema.
         private val MIGRATION_16_18 = object : Migration(16, 18) {
             override fun migrate(db: SupportSQLiteDatabase) { /* sem mudança de schema */ }
+        }
+
+        private val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE obras ADD COLUMN espessuraContratoCm REAL NOT NULL DEFAULT 0.0")
+            }
+        }
+
+        private val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE carregamentos ADD COLUMN latitude REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE carregamentos ADD COLUMN longitude REAL NOT NULL DEFAULT 0.0")
+            }
+        }
+
+        private val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE diarios ADD COLUMN horarioPontoCidade TEXT")
+            }
+        }
+
+        private val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `abastecimentos` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `diarioId` INTEGER NOT NULL,
+                        `veiculo` TEXT NOT NULL DEFAULT '',
+                        `litros` REAL NOT NULL DEFAULT 0.0,
+                        `fotoTicketUri` TEXT NOT NULL DEFAULT '',
+                        `horario` TEXT,
+                        FOREIGN KEY(`diarioId`) REFERENCES `diarios`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_abastecimentos_diarioId` ON `abastecimentos` (`diarioId`)")
+            }
+        }
+
+        private val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE desvios ADD COLUMN litros REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE desvios ADD COLUMN fotoTicketUri TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE desvios ADD COLUMN latitude REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE desvios ADD COLUMN longitude REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE desvios ADD COLUMN endereco TEXT NOT NULL DEFAULT ''")
+            }
         }
 
         fun getInstance(context: Context): AppDatabase {
@@ -43,7 +89,15 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "diario_obras.db"
                 )
-                    .addMigrations(MIGRATION_16_18)
+                    .addMigrations(
+                        MIGRATION_16_18,
+                        MIGRATION_18_19,
+                        MIGRATION_19_20,
+                        MIGRATION_20_21,
+                        MIGRATION_21_22,
+                        MIGRATION_22_23
+                    )
+                    .fallbackToDestructiveMigration()
                     .build()
 
                 INSTANCE = instance

@@ -60,6 +60,8 @@ import com.example.diarioobras.data.ServicoAreaEntity
 import com.example.diarioobras.data.ServicoEntity
 import com.example.diarioobras.data.StatusEtapa
 import com.example.diarioobras.ui.MainViewModel
+import com.example.diarioobras.ui.comprimirFoto
+import com.example.diarioobras.ui.salvarFotoNaGaleria
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.CoroutineScope
@@ -317,6 +319,20 @@ fun ServicoFormScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
+            scope.launch {
+                val uriCapturada = when (fotoEmCaptura) {
+                    "ANTES" -> fotoAntesUri
+                    "CAVA_ABERTA" -> fotoCavaAbertaUri
+                    "CAVA_ESPESSURA" -> fotoEspessuraUri
+                    "CONCLUSAO" -> fotoConclusaoUri
+                    else -> null
+                }
+                uriCapturada?.let { uri ->
+                    comprimirFoto(context, uri)
+                    salvarFotoNaGaleria(context, uri)
+                }
+            }
+
             versaoPreviewFotos++
 
             if (

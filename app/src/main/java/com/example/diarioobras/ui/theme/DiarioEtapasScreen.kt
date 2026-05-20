@@ -2,6 +2,7 @@ package com.example.diarioobras.ui
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.location.Location
@@ -52,6 +53,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -75,6 +77,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.key
 
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import java.text.SimpleDateFormat
+import java.util.Date
+import kotlinx.coroutines.withTimeoutOrNull
+import com.google.android.gms.tasks.CancellationTokenSource
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.animation.AnimatedVisibility
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -88,6 +98,7 @@ fun DiarioEtapasScreen(
 ) {
 
     val tiposDesvio: List<Pair<String, String>> = listOf(
+        "AB" to "Abastecimento",
         "P1" to "Refeição / Intervalo",
         "P2" to "Chuva",
         "P3" to "Quebra veículo",
@@ -171,8 +182,17 @@ fun DiarioEtapasScreen(
     var veiculoEtapa3Selecionado by remember(diarioId) { mutableStateOf("") }
     val quantidadesEtapa3 = remember(diarioId) { mutableStateListOf<String>() }
     var fotoTicketEtapa3Uri by remember(diarioId) { mutableStateOf<Uri?>(null) }
+    var latitudeTicket by remember(diarioId) { mutableStateOf(0.0) }
+    var longitudeTicket by remember(diarioId) { mutableStateOf(0.0) }
     var mostrarTicketAmpliado by remember { mutableStateOf(false) }
     var versaoPreviewTicket by remember(diarioId) { mutableStateOf(0) }
+    var menuVeiculoAbastecimentoExpandido by remember { mutableStateOf(false) }
+    var veiculoAbastecimentoSelecionado by remember(diarioId) { mutableStateOf("") }
+    var litrosAbastecimento by remember(diarioId) { mutableStateOf("") }
+    var fotoAbastecimentoUri by remember(diarioId) { mutableStateOf<Uri?>(null) }
+    var versaoPreviewAbastecimento by remember(diarioId) { mutableStateOf(0) }
+    var latitudeDesvioAb by remember { mutableStateOf(0.0) }
+    var longitudeDesvioAb by remember { mutableStateOf(0.0) }
 
     // Etapa 4
     var exibindoCadastroServico by remember(diarioId) { mutableStateOf(false) }
@@ -203,6 +223,25 @@ fun DiarioEtapasScreen(
     var proximoDestinoSelecionado by remember(diarioId) { mutableStateOf("") }
 
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    val uploadEstado by viewModel.uploadEstado.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(uploadEstado) {
+        when (val estado = uploadEstado) {
+            is UploadEstado.Sucesso -> {
+                snackbarHostState.showSnackbar("Diário enviado ao Firebase com sucesso!")
+                viewModel.resetarUploadEstado()
+            }
+            is UploadEstado.Erro -> {
+                snackbarHostState.showSnackbar("Erro ao enviar: ${estado.mensagem}")
+                viewModel.resetarUploadEstado()
+            }
+            else -> Unit
+        }
+    }
+
     val fusedLocationClient = remember {
         LocationServices.getFusedLocationProviderClient(context)
     }
@@ -219,6 +258,7 @@ fun DiarioEtapasScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
+            fotoHospedagemUriTemporaria?.let { uri -> coroutineScope.launch { comprimirFoto(context, uri); salvarFotoNaGaleria(context, uri) } }
             versaoPreviewHospedagem++
 
             val uriFoto = fotoHospedagemUriTemporaria?.toString().orEmpty()
@@ -385,9 +425,6 @@ fun DiarioEtapasScreen(
                 if (veiculos.size == 1) veiculos.first() else ""
         }
 
-        fotoTicketEtapa3Uri =
-            if (diarioAtual.fotoTicketUri.isNotBlank()) Uri.parse(diarioAtual.fotoTicketUri) else null
-
         dadosLocaisInicializados = true
     }
 
@@ -410,6 +447,7 @@ fun DiarioEtapasScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
+            fotoAntesUri?.let { uri -> coroutineScope.launch { comprimirFoto(context, uri); salvarFotoNaGaleria(context, uri) } }
             fusedLocationClient.lastLocation
                 .addOnSuccessListener { location: Location? ->
                     if (location != null) {
@@ -453,7 +491,37 @@ fun DiarioEtapasScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
+            fotoTicketEtapa3Uri?.let { uri -> coroutineScope.launch { comprimirFoto(context, uri); salvarFotoNaGaleria(context, uri) } }
             versaoPreviewTicket++
+            coroutineScope.launch {
+                val cts1 = CancellationTokenSource()
+                val locHigh = withTimeoutOrNull(5_000L) {
+                    runCatching {
+                        fusedLocationClient.getCurrentLocation(
+                            Priority.PRIORITY_HIGH_ACCURACY, cts1.token
+                        ).await()
+                    }.getOrNull()
+                }
+                if (locHigh == null) cts1.cancel()
+
+                val locFinal = locHigh ?: run {
+                    val cts2 = CancellationTokenSource()
+                    val locBalanced = withTimeoutOrNull(5_000L) {
+                        runCatching {
+                            fusedLocationClient.getCurrentLocation(
+                                Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts2.token
+                            ).await()
+                        }.getOrNull()
+                    }
+                    if (locBalanced == null) cts2.cancel()
+                    locBalanced
+                }
+
+                locFinal?.let {
+                    latitudeTicket = it.latitude
+                    longitudeTicket = it.longitude
+                }
+            }
         }
     }
 
@@ -464,6 +532,38 @@ fun DiarioEtapasScreen(
             val novaUri = criarUriParaFotoEtapa(context)
             fotoTicketEtapa3Uri = novaUri
             ticketCameraLauncher.launch(novaUri)
+        }
+    }
+
+    val abastecimentoCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { sucesso ->
+        if (sucesso) {
+            versaoPreviewAbastecimento++
+            fotoAbastecimentoUri?.let { uri ->
+                coroutineScope.launch {
+                    comprimirFoto(context, uri)
+                    salvarFotoNaGaleria(context, uri)
+                }
+            }
+        }
+    }
+
+    var litrosDesvioAb by remember { mutableStateOf("") }
+    var fotoTicketDesvioAbUri by remember { mutableStateOf<Uri?>(null) }
+    var versaoPreviewDesvioAb by remember { mutableStateOf(0) }
+
+    val desvioAbCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { sucesso ->
+        if (sucesso) {
+            versaoPreviewDesvioAb++
+            fotoTicketDesvioAbUri?.let { uri ->
+                coroutineScope.launch {
+                    comprimirFoto(context, uri)
+                    salvarFotoNaGaleria(context, uri)
+                }
+            }
         }
     }
 
@@ -524,6 +624,23 @@ fun DiarioEtapasScreen(
         }
     }
 
+    LaunchedEffect(carregamentos, veiculosEtapa3.size) {
+        val carregamento = carregamentos.firstOrNull() ?: return@LaunchedEffect
+        if (fotoTicketEtapa3Uri == null && carregamento.fotoTicketUri.isNotBlank()) {
+            fotoTicketEtapa3Uri = Uri.parse(carregamento.fotoTicketUri)
+        }
+        if (quantidadesEtapa3.isNotEmpty()) {
+            val pesos = carregamento.pesoLiquidoTon.split(" / ")
+            if (pesos.size == quantidadesEtapa3.size) {
+                pesos.forEachIndexed { index, peso ->
+                    if (quantidadesEtapa3.getOrNull(index).isNullOrBlank()) {
+                        quantidadesEtapa3[index] = peso
+                    }
+                }
+            }
+        }
+    }
+
     val veiculosJaCarregados = remember(carregamentos) {
         carregamentos
             .map { it.veiculo }
@@ -556,6 +673,7 @@ fun DiarioEtapasScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -567,6 +685,26 @@ fun DiarioEtapasScreen(
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        coroutineScope.launch {
+                            val nomeArquivo = viewModel.salvarJsonDiarioNoApp(context, diarioId)
+                            if (nomeArquivo != null) {
+                                val uri = viewModel.obterUriJsonSalvo(context, nomeArquivo)
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/json"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(
+                                    Intent.createChooser(intent, "Exportar Diário JSON")
+                                )
+                            }
+                        }
+                    }) {
+                        Icon(Icons.Filled.Share, contentDescription = "Exportar JSON")
                     }
                 }
             )
@@ -955,6 +1093,10 @@ fun DiarioEtapasScreen(
                                     todasQuantidadesPreenchidasLocais &&
                                     fotoTicketEtapa3Uri != null
 
+                        val abastecimentosFlow = remember(diarioId) { viewModel.abastecimentosDoDiario(diarioId) }
+                        val abastecimentos by abastecimentosFlow.collectAsStateWithLifecycle()
+
+
                         Column {
                             Text("Chegada na usina", style = MaterialTheme.typography.titleSmall)
                             Spacer(modifier = Modifier.height(8.dp))
@@ -972,6 +1114,188 @@ fun DiarioEtapasScreen(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                             }
+
+                            // Abastecimento na usina
+                            var houvAbastecimento by remember(diarioId) { mutableStateOf<Boolean?>(null) }
+                            Text("Abastecimento na usina", style = MaterialTheme.typography.titleSmall)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = { houvAbastecimento = true },
+                                    enabled = !diarioFechado,
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = if (houvAbastecimento == true)
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        else Color.Transparent
+                                    )
+                                ) { Text("Sim") }
+                                OutlinedButton(
+                                    onClick = { houvAbastecimento = false },
+                                    enabled = !diarioFechado,
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = if (houvAbastecimento == false)
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        else Color.Transparent
+                                    )
+                                ) { Text("Não") }
+                            }
+
+                            AnimatedVisibility(visible = houvAbastecimento == true) {
+                                Column {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Card(modifier = Modifier.fillMaxWidth()) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Box {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        menuVeiculoAbastecimentoExpandido = true
+                                                    },
+                                                    enabled = !diarioFechado,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text(
+                                                        if (veiculoAbastecimentoSelecionado.isBlank()) "Selecionar veículo"
+                                                        else veiculoAbastecimentoSelecionado
+                                                    )
+                                                }
+                                                DropdownMenu(
+                                                    expanded = menuVeiculoAbastecimentoExpandido,
+                                                    onDismissRequest = {
+                                                        menuVeiculoAbastecimentoExpandido = false
+                                                    }
+                                                ) {
+                                                    veiculosDisponiveisEtapa3.forEach { v ->
+                                                        DropdownMenuItem(
+                                                            text = { Text(v) },
+                                                            onClick = {
+                                                                veiculoAbastecimentoSelecionado = v
+                                                                menuVeiculoAbastecimentoExpandido =
+                                                                    false
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        OutlinedTextField(
+                                            value = litrosAbastecimento,
+                                            onValueChange = { litrosAbastecimento = it },
+                                            label = { Text("Litros") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                            enabled = !diarioFechado,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        OutlinedButton(
+                                            onClick = {
+                                                if (ContextCompat.checkSelfPermission(
+                                                        context, Manifest.permission.CAMERA
+                                                    ) == PackageManager.PERMISSION_GRANTED
+                                                ) {
+                                                    val novaUri = criarUriParaFotoEtapa(context)
+                                                    fotoAbastecimentoUri = novaUri
+                                                    abastecimentoCameraLauncher.launch(novaUri)
+                                                } else {
+                                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                                }
+                                            },
+                                            enabled = !diarioFechado,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(if (fotoAbastecimentoUri == null) "Foto do ticket" else "Ticket capturado")
+                                        }
+
+                                        if (fotoAbastecimentoUri != null) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            AsyncImage(
+                                                model = fotoAbastecimentoUri?.let { "${it}#${versaoPreviewAbastecimento}" },
+                                                contentDescription = "Miniatura ticket abastecimento",
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(120.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(12.dp))
+
+                                        Button(
+                                            onClick = {
+                                                val litros = litrosAbastecimento.toDoubleOrNull() ?: 0.0
+                                                val hora = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                                                viewModel.salvarAbastecimento(
+                                                    diarioId,
+                                                    veiculoAbastecimentoSelecionado,
+                                                    litros,
+                                                    fotoAbastecimentoUri?.toString() ?: "",
+                                                    hora
+                                                )
+                                                veiculoAbastecimentoSelecionado = ""
+                                                litrosAbastecimento = ""
+                                                fotoAbastecimentoUri = null
+                                            },
+                                            enabled = !diarioFechado &&
+                                                    veiculoAbastecimentoSelecionado.isNotBlank() &&
+                                                    litrosAbastecimento.isNotBlank(),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("Salvar abastecimento")
+                                        }
+                                    }
+                                }
+                            }
+                            if (abastecimentos.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Abastecimentos registrados", style = MaterialTheme.typography.titleSmall)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                val expandidosAbastecimento = remember(diarioId) { mutableStateMapOf<Long, Boolean>() }
+
+                                abastecimentos.forEach { item ->
+                                    val expandido = expandidosAbastecimento[item.id] ?: false
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                expandidosAbastecimento[item.id] = !expandido
+                                            },
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column {
+                                                    Text(item.veiculo, style = MaterialTheme.typography.bodyMedium)
+                                                    Text("${item.litros} L · ${item.horario.orEmpty()}", style = MaterialTheme.typography.bodySmall)
+                                                }
+                                                if (!diarioFechado) {
+                                                    IconButton(onClick = { viewModel.excluirAbastecimento(item) }) {
+                                                        Icon(Icons.Default.Delete, contentDescription = "Excluir")
+                                                    }
+                                                }
+                                            }
+                                            if (expandido && item.fotoTicketUri.isNotBlank()) {
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                AsyncImage(
+                                                    model = item.fotoTicketUri,
+                                                    contentDescription = "Foto ticket abastecimento",
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(180.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
 
                             Spacer(modifier = Modifier.height(16.dp))
 
@@ -1012,6 +1336,7 @@ fun DiarioEtapasScreen(
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))
+
 
                             Text("Pesagem do caminhão carregado", style = MaterialTheme.typography.titleSmall)
                             Spacer(modifier = Modifier.height(8.dp))
@@ -1104,15 +1429,13 @@ fun DiarioEtapasScreen(
 
                             Button(
                                 onClick = {
-                                    val cargaConsolidada = veiculosEtapa3.mapIndexed { index, veiculo ->
-                                        "$veiculo: ${quantidadesEtapa3.getOrNull(index).orEmpty()} ton"
-                                    }.joinToString(" / ")
-
-                                    viewModel.atualizarCarregamentoDiario(
+                                    viewModel.salvarCarregamentoEtapa3(
                                         diarioId = diarioId,
-                                        localCarregamento = "",
-                                        pesoLiquidoTon = cargaConsolidada,
-                                        fotoTicketUri = fotoTicketEtapa3Uri?.toString().orEmpty()
+                                        veiculo = veiculosEtapa3.joinToString(" / "),
+                                        pesoLiquidoTon = quantidadesEtapa3.joinToString(" / "),
+                                        fotoTicketUri = fotoTicketEtapa3Uri?.toString().orEmpty(),
+                                        latitude = latitudeTicket,
+                                        longitude = longitudeTicket
                                     )
                                 },
                                 modifier = Modifier.fillMaxWidth(),
@@ -1794,9 +2117,18 @@ fun DiarioEtapasScreen(
                         desviosExpandido = false
                     },
                     conteudo = {
+                        val isRetornoBase = diario?.proximoDestino == "Retorno à base"
+
                         var observacaoFinalLocal by remember(diario?.id, diario?.observacaoFinalDo) {
                             mutableStateOf(diario?.observacaoFinalDo ?: "")
                         }
+                        var horarioPontoLocal by remember(diario?.id, diario?.horarioPontoCidade) {
+                            mutableStateOf(
+                                diario?.horarioPontoCidade
+                                    ?: SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                            )
+                        }
+                        var mostrarDialogPonto by remember { mutableStateOf(false) }
 
                         Column {
                             if (diario?.statusFechamentoDo == StatusEtapa.CONCLUIDA) {
@@ -1806,6 +2138,13 @@ fun DiarioEtapasScreen(
                                             ?: "Nenhuma observação"
                                     }"
                                 )
+                                if (isRetornoBase && !diario?.horarioPontoCidade.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Batendo ponto na chegada: ${diario?.horarioPontoCidade}",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
                                 Spacer(modifier = Modifier.height(12.dp))
 
                                 Text(
@@ -1822,18 +2161,76 @@ fun DiarioEtapasScreen(
                                     minLines = 3
                                 )
 
+                                if (isRetornoBase) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text(
+                                        text = "Batendo ponto na chegada: ${horarioPontoLocal.ifBlank { "--:--" }}",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    OutlinedButton(
+                                        onClick = { mostrarDialogPonto = true },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Editar horário")
+                                    }
+
+                                    if (mostrarDialogPonto) {
+                                        HoraMinutoDialog(
+                                            titulo = "Batendo ponto na chegada",
+                                            valorAtual = horarioPontoLocal.ifBlank { null },
+                                            onDismiss = { mostrarDialogPonto = false },
+                                            onConfirmar = { novoHorario ->
+                                                horarioPontoLocal = novoHorario
+                                                mostrarDialogPonto = false
+                                            }
+                                        )
+                                    }
+                                }
+
                                 Spacer(modifier = Modifier.height(12.dp))
 
                                 Button(
                                     onClick = {
                                         viewModel.concluirFechamentoDo(
                                             diarioId = diarioId,
-                                            observacaoFinalDo = observacaoFinalLocal.ifBlank { "D.O. finalizado" }
+                                            observacaoFinalDo = observacaoFinalLocal.ifBlank { "D.O. finalizado" },
+                                            horarioPontoCidade = if (isRetornoBase) horarioPontoLocal.ifBlank { null } else null
                                         )
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text("Concluir etapa 7")
+                                    Text(
+                                        if (isRetornoBase)
+                                            "Encerramento / Batendo ponto na chegada"
+                                        else
+                                            "Concluir etapa 7"
+                                    )
+                                }
+                                // Botão de reenvio manual caso o envio automático falhe
+                                val diarioFechadoAtual = diario?.diarioFechado ?: false
+                                if (diarioFechadoAtual) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    when (uploadEstado) {
+                                        is UploadEstado.Enviando -> {
+                                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                            Text(
+                                                "Enviando dados...",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                modifier = Modifier.padding(top = 4.dp)
+                                            )
+                                        }
+                                        else -> {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.reenviarDiario(diarioId)
+                                                },
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text("Reenviar para servidor")
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1872,6 +2269,22 @@ fun DiarioEtapasScreen(
                 }
             }
         }
+    }
+
+    if (uploadEstado is UploadEstado.Enviando) {
+        AlertDialog(
+            onDismissRequest = {},
+            confirmButton = {},
+            title = { Text("Enviando ao Firebase...") },
+            text = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+        )
     }
 
     if (servicoPendenteExclusao != null) {
@@ -1979,6 +2392,9 @@ fun DesviosCard(
     onClick: () -> Unit,
     onEditarObservacao: (DesvioItemEntity) -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     var menuTipoDesvioExpandido by remember { mutableStateOf(false) }
     var codigoEmCadastro by remember { mutableStateOf("") }
     var descricaoEmCadastro by remember { mutableStateOf("") }
@@ -1986,11 +2402,58 @@ fun DesviosCard(
     var fimEmCadastro by remember { mutableStateOf("") }
     var observacaoEmCadastro by remember { mutableStateOf("") }
     var desvioExpandidoId by remember { mutableStateOf<Long?>(null) }
+    var litrosDesvioAb by remember { mutableStateOf("") }
+    var fotoTicketDesvioAbUri by remember { mutableStateOf<Uri?>(null) }
+    var versaoPreviewDesvioAb by remember { mutableStateOf(0) }
+    var latitudeDesvioAb by remember { mutableStateOf(0.0) }
+    var longitudeDesvioAb by remember { mutableStateOf(0.0) }
 
     var seletorHoraAberto by remember { mutableStateOf(false) }
     var seletorHoraInicialHora by remember { mutableStateOf(8) }
     var seletorHoraInicialMinuto by remember { mutableStateOf(0) }
     var seletorHoraCallback by remember { mutableStateOf<((String) -> Unit)?>(null) }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val novaUri = criarUriParaFotoEtapa(context)
+            fotoTicketDesvioAbUri = novaUri
+        }
+    }
+
+    val desvioAbCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { sucesso ->
+        if (sucesso) {
+            versaoPreviewDesvioAb++
+            fotoTicketDesvioAbUri?.let { uri ->
+                coroutineScope.launch {
+                    comprimirFoto(context, uri)
+                    salvarFotoNaGaleria(context, uri)
+                }
+            }
+            coroutineScope.launch {
+                try {
+                    val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+                    val cts = CancellationTokenSource()
+                    val loc = withTimeoutOrNull(5_000L) {
+                        runCatching {
+                            fusedLocationClient.getCurrentLocation(
+                                Priority.PRIORITY_HIGH_ACCURACY, cts.token
+                            ).await()
+                        }.getOrNull()
+                    }
+                    if (loc != null) {
+                        latitudeDesvioAb = loc.latitude
+                        longitudeDesvioAb = loc.longitude
+                    }
+                } catch (e: Exception) {
+                    // GPS não disponível
+                }
+            }
+        }
+    }
 
     fun abrirSeletorHora(valorAtual: String, onHoraSelecionada: (String) -> Unit) {
         val partes = valorAtual.split(":")
@@ -2024,15 +2487,10 @@ fun DesviosCard(
                     text = "Desvios",
                     style = MaterialTheme.typography.titleMedium
                 )
-
                 Spacer(modifier = Modifier.height(8.dp))
-
                 Text(
-                    if (quantidadeDesvios == 0) {
-                        "Nenhum desvio registrado."
-                    } else {
-                        "Desvios registrados: $quantidadeDesvios"
-                    }
+                    if (quantidadeDesvios == 0) "Nenhum desvio registrado."
+                    else "Desvios registrados: $quantidadeDesvios"
                 )
             }
 
@@ -2042,17 +2500,14 @@ fun DesviosCard(
                 desvios.forEach { desvio ->
                     key(desvio.id) {
                         val estaExpandido = desvioExpandidoId == desvio.id
-
                         val corCard = when {
                             desvio.inicio.isBlank() -> Color(0xFFF1F1F1)
                             desvio.fim.isBlank() -> Color(0xFFFFE8C2)
                             else -> Color(0xFFDDF5DD)
                         }
-
                         var inicioEditado by remember(desvio.id, desvio.inicio) {
                             mutableStateOf(desvio.inicio)
                         }
-
                         var fimEditado by remember(desvio.id, desvio.fim) {
                             mutableStateOf(desvio.fim)
                         }
@@ -2064,7 +2519,6 @@ fun DesviosCard(
                             colors = CardDefaults.cardColors(containerColor = corCard)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
-
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -2076,25 +2530,19 @@ fun DesviosCard(
                                         text = "${desvio.codigo} - ${desvio.descricao}",
                                         style = MaterialTheme.typography.titleSmall
                                     )
-
                                     Spacer(modifier = Modifier.height(4.dp))
-
                                     Text(
                                         text = "Horário: ${
                                             when {
                                                 desvio.inicio.isNotBlank() && desvio.fim.isNotBlank() ->
                                                     "${desvio.inicio} às ${desvio.fim}"
-
                                                 desvio.inicio.isNotBlank() ->
                                                     "Início ${desvio.inicio}"
-
-                                                else ->
-                                                    "Não iniciado"
+                                                else -> "Não iniciado"
                                             }
                                         }",
                                         style = MaterialTheme.typography.bodySmall
                                     )
-
                                     if (desvio.observacao.isNotBlank()) {
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
@@ -2106,25 +2554,17 @@ fun DesviosCard(
 
                                 if (estaExpandido) {
                                     Spacer(modifier = Modifier.height(12.dp))
-
                                     Text("Início: ${inicioEditado.ifBlank { "--:--" }}")
-
                                     Spacer(modifier = Modifier.height(8.dp))
-
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Button(
-                                            onClick = {
-                                                inicioEditado = horaAtualFormatada()
-                                            },
+                                            onClick = { inicioEditado = horaAtualFormatada() },
                                             enabled = !bloqueado,
                                             modifier = Modifier.weight(1f)
-                                        ) {
-                                            Text("Marcar início")
-                                        }
-
+                                        ) { Text("Marcar início") }
                                         OutlinedButton(
                                             onClick = {
                                                 abrirSeletorHora(inicioEditado) { hora ->
@@ -2133,31 +2573,20 @@ fun DesviosCard(
                                             },
                                             enabled = !bloqueado,
                                             modifier = Modifier.weight(1f)
-                                        ) {
-                                            Text("Editar início")
-                                        }
+                                        ) { Text("Editar início") }
                                     }
-
                                     Spacer(modifier = Modifier.height(12.dp))
-
                                     Text("Fim: ${fimEditado.ifBlank { "--:--" }}")
-
                                     Spacer(modifier = Modifier.height(8.dp))
-
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Button(
-                                            onClick = {
-                                                fimEditado = horaAtualFormatada()
-                                            },
+                                            onClick = { fimEditado = horaAtualFormatada() },
                                             enabled = !bloqueado,
                                             modifier = Modifier.weight(1f)
-                                        ) {
-                                            Text("Marcar fim")
-                                        }
-
+                                        ) { Text("Marcar fim") }
                                         OutlinedButton(
                                             onClick = {
                                                 abrirSeletorHora(fimEditado) { hora ->
@@ -2166,32 +2595,20 @@ fun DesviosCard(
                                             },
                                             enabled = !bloqueado,
                                             modifier = Modifier.weight(1f)
-                                        ) {
-                                            Text("Editar fim")
-                                        }
+                                        ) { Text("Editar fim") }
                                     }
-
                                     Spacer(modifier = Modifier.height(8.dp))
-
                                     Text(
                                         text = "Observação: ${desvio.observacao.ifBlank { "Nenhuma observação" }}",
                                         style = MaterialTheme.typography.bodyMedium
                                     )
-
                                     Spacer(modifier = Modifier.height(8.dp))
-
                                     OutlinedButton(
-                                        onClick = {
-                                            onEditarObservacao(desvio)
-                                        },
+                                        onClick = { onEditarObservacao(desvio) },
                                         enabled = !bloqueado,
                                         modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text("Editar observação")
-                                    }
-
+                                    ) { Text("Editar observação") }
                                     Spacer(modifier = Modifier.height(8.dp))
-
                                     Button(
                                         onClick = {
                                             viewModel.atualizarHorarioDesvio(
@@ -2203,9 +2620,7 @@ fun DesviosCard(
                                         },
                                         enabled = !bloqueado,
                                         modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text("Salvar horários")
-                                    }
+                                    ) { Text("Salvar horários") }
                                 }
                             }
                         }
@@ -2215,9 +2630,7 @@ fun DesviosCard(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
-                    onClick = {
-                        menuTipoDesvioExpandido = !menuTipoDesvioExpandido
-                    },
+                    onClick = { menuTipoDesvioExpandido = !menuTipoDesvioExpandido },
                     enabled = !bloqueado && codigoEmCadastro.isBlank(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -2232,7 +2645,6 @@ fun DesviosCard(
                     tiposDesvio.forEach { item ->
                         val codigo = item.first
                         val descricao = item.second
-
                         DropdownMenuItem(
                             text = { Text("$codigo - $descricao") },
                             onClick = {
@@ -2241,6 +2653,10 @@ fun DesviosCard(
                                 inicioEmCadastro = ""
                                 fimEmCadastro = ""
                                 observacaoEmCadastro = ""
+                                litrosDesvioAb = ""
+                                fotoTicketDesvioAbUri = null
+                                latitudeDesvioAb = 0.0
+                                longitudeDesvioAb = 0.0
                                 menuTipoDesvioExpandido = false
                             }
                         )
@@ -2249,37 +2665,24 @@ fun DesviosCard(
 
                 if (codigoEmCadastro.isNotBlank()) {
                     Spacer(modifier = Modifier.height(12.dp))
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(12.dp)) {
-
                             Text(
                                 text = "$codigoEmCadastro - $descricaoEmCadastro",
                                 style = MaterialTheme.typography.titleSmall
                             )
-
                             Spacer(modifier = Modifier.height(12.dp))
-
                             Text("Início: ${inicioEmCadastro.ifBlank { "--:--" }}")
-
                             Spacer(modifier = Modifier.height(8.dp))
-
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Button(
-                                    onClick = {
-                                        inicioEmCadastro = horaAtualFormatada()
-                                    },
+                                    onClick = { inicioEmCadastro = horaAtualFormatada() },
                                     enabled = !bloqueado,
                                     modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Marcar início")
-                                }
-
+                                ) { Text("Marcar início") }
                                 OutlinedButton(
                                     onClick = {
                                         abrirSeletorHora(inicioEmCadastro) { hora ->
@@ -2288,31 +2691,20 @@ fun DesviosCard(
                                     },
                                     enabled = !bloqueado,
                                     modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Editar início")
-                                }
+                                ) { Text("Editar início") }
                             }
-
                             Spacer(modifier = Modifier.height(12.dp))
-
                             Text("Fim: ${fimEmCadastro.ifBlank { "--:--" }}")
-
                             Spacer(modifier = Modifier.height(8.dp))
-
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Button(
-                                    onClick = {
-                                        fimEmCadastro = horaAtualFormatada()
-                                    },
+                                    onClick = { fimEmCadastro = horaAtualFormatada() },
                                     enabled = !bloqueado,
                                     modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Marcar fim")
-                                }
-
+                                ) { Text("Marcar fim") }
                                 OutlinedButton(
                                     onClick = {
                                         abrirSeletorHora(fimEmCadastro) { hora ->
@@ -2321,13 +2713,9 @@ fun DesviosCard(
                                     },
                                     enabled = !bloqueado,
                                     modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Editar fim")
-                                }
+                                ) { Text("Editar fim") }
                             }
-
                             Spacer(modifier = Modifier.height(8.dp))
-
                             OutlinedTextField(
                                 value = observacaoEmCadastro,
                                 onValueChange = { observacaoEmCadastro = it },
@@ -2336,17 +2724,69 @@ fun DesviosCard(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            // Campos extras apenas para desvio AB
+                            if (codigoEmCadastro == "AB") {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = litrosDesvioAb,
+                                    onValueChange = { litrosDesvioAb = it },
+                                    label = { Text("Litros abastecidos") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    enabled = !bloqueado,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        if (ContextCompat.checkSelfPermission(
+                                                context, Manifest.permission.CAMERA
+                                            ) == PackageManager.PERMISSION_GRANTED
+                                        ) {
+                                            val novaUri = criarUriParaFotoEtapa(context)
+                                            fotoTicketDesvioAbUri = novaUri
+                                            desvioAbCameraLauncher.launch(novaUri)
+                                        } else {
+                                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                        }
+                                    },
+                                    enabled = !bloqueado,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(if (fotoTicketDesvioAbUri == null) "Foto do ticket" else "Ticket capturado ✓")
+                                }
+                                if (fotoTicketDesvioAbUri != null) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    AsyncImage(
+                                        model = fotoTicketDesvioAbUri?.let { "${it}#${versaoPreviewDesvioAb}" },
+                                        contentDescription = "Foto ticket abastecimento desvio",
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(120.dp)
+                                    )
+                                }
+                            }
 
+                            Spacer(modifier = Modifier.height(12.dp))
                             Button(
                                 onClick = {
+                                    val litros = if (codigoEmCadastro == "AB")
+                                        litrosDesvioAb.toDoubleOrNull() ?: 0.0
+                                    else 0.0
+                                    val fotoUri = if (codigoEmCadastro == "AB")
+                                        fotoTicketDesvioAbUri?.toString() ?: ""
+                                    else ""
+
                                     viewModel.adicionarDesvioCompleto(
                                         diarioId = diarioId,
                                         codigo = codigoEmCadastro,
                                         descricao = descricaoEmCadastro,
                                         inicio = inicioEmCadastro,
                                         fim = fimEmCadastro,
-                                        observacao = observacaoEmCadastro
+                                        observacao = observacaoEmCadastro,
+                                        litros = litros,
+                                        fotoTicketUri = fotoUri,
+                                        latitude = latitudeDesvioAb,
+                                        longitude = longitudeDesvioAb
                                     )
 
                                     codigoEmCadastro = ""
@@ -2354,17 +2794,21 @@ fun DesviosCard(
                                     inicioEmCadastro = ""
                                     fimEmCadastro = ""
                                     observacaoEmCadastro = ""
+                                    litrosDesvioAb = ""
+                                    fotoTicketDesvioAbUri = null
+                                    latitudeDesvioAb = 0.0
+                                    longitudeDesvioAb = 0.0
                                 },
                                 enabled = !bloqueado &&
                                         inicioEmCadastro.isNotBlank() &&
-                                        fimEmCadastro.isNotBlank(),
+                                        fimEmCadastro.isNotBlank() &&
+                                        (codigoEmCadastro != "AB" || litrosDesvioAb.isNotBlank()),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text("Confirmar desvio")
                             }
 
                             Spacer(modifier = Modifier.height(8.dp))
-
                             OutlinedButton(
                                 onClick = {
                                     codigoEmCadastro = ""
@@ -2372,6 +2816,10 @@ fun DesviosCard(
                                     inicioEmCadastro = ""
                                     fimEmCadastro = ""
                                     observacaoEmCadastro = ""
+                                    litrosDesvioAb = ""
+                                    fotoTicketDesvioAbUri = null
+                                    latitudeDesvioAb = 0.0
+                                    longitudeDesvioAb = 0.0
                                 },
                                 enabled = !bloqueado,
                                 modifier = Modifier.fillMaxWidth()

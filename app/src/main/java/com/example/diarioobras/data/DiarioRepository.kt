@@ -39,6 +39,9 @@ class DiarioRepository(
     fun buscarDiarioFlow(diarioId: Long): Flow<DiarioEntity?> =
         dao.buscarDiarioFlowPorId(diarioId)
 
+    fun listarAbastecimentos(diarioId: Long): Flow<List<AbastecimentoItemEntity>> =
+        dao.listarAbastecimentos(diarioId)
+
     // ── Leituras simples ─────────────────────────────────────────────────
 
     suspend fun buscarDiarioPorId(id: Long): DiarioEntity? = dao.buscarDiarioPorId(id)
@@ -53,13 +56,15 @@ class DiarioRepository(
 
     suspend fun inserirObra(
         nome: String, local: String, contratante: String,
-        contrato: String, dataInicioContrato: String, prazoContratoDias: Int
+        contrato: String, dataInicioContrato: String, prazoContratoDias: Int,
+        espessuraContratoCm: Double = 0.0
     ) {
         dao.inserirObra(
             ObraEntity(
                 nome = nome, local = local, contratante = contratante,
                 contrato = contrato, dataInicioContrato = dataInicioContrato,
-                prazoContratoDias = prazoContratoDias
+                prazoContratoDias = prazoContratoDias,
+                espessuraContratoCm = espessuraContratoCm
             )
         )
     }
@@ -112,6 +117,26 @@ class DiarioRepository(
         )
     }
 
+    // ── Abastecimento ────────────────────────────────────────────────────
+
+    suspend fun salvarAbastecimento(
+        diarioId: Long, veiculo: String, litros: Double,
+        fotoTicketUri: String, horario: String
+    ) {
+        dao.inserirAbastecimento(
+            AbastecimentoItemEntity(
+                diarioId = diarioId,
+                veiculo = veiculo,
+                litros = litros,
+                fotoTicketUri = fotoTicketUri,
+                horario = horario
+            )
+        )
+    }
+
+    suspend fun excluirAbastecimento(item: AbastecimentoItemEntity) =
+        dao.excluirAbastecimento(item)
+
     // ── Operações transacionais ──────────────────────────────────────────
 
     suspend fun criarNovoDiario(obraId: Long): Long {
@@ -152,6 +177,46 @@ class DiarioRepository(
                     saidaUsinaTrecho = saidaUsinaTrecho, localCarregamento = localCarregamento,
                     pesoLiquidoTon = pesoLiquidoTon, fotoTicketUri = fotoTicketUri
                 )
+            )
+        }
+    }
+
+    suspend fun salvarCarregamentoEtapa3(
+        diarioId: Long, veiculo: String, pesoLiquidoTon: String, fotoTicketUri: String,
+        latitude: Double, longitude: Double
+    ) {
+        db.withTransaction {
+            val existentes = dao.listarCarregamentosDireto(diarioId)
+            val existente = existentes.firstOrNull()
+            if (existente == null) {
+                dao.inserirCarregamento(
+                    CarregamentoItemEntity(
+                        diarioId = diarioId, ordem = 1,
+                        veiculo = veiculo, pesoLiquidoTon = pesoLiquidoTon,
+                        fotoTicketUri = fotoTicketUri,
+                        latitude = latitude, longitude = longitude
+                    )
+                )
+            } else {
+                dao.atualizarCarregamento(
+                    existente.copy(
+                        veiculo = veiculo, pesoLiquidoTon = pesoLiquidoTon,
+                        fotoTicketUri = fotoTicketUri,
+                        latitude = latitude, longitude = longitude
+                    )
+                )
+            }
+            val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
+            dao.atualizarStatusEtapasDiario(
+                diarioId = diarioId, etapaAtual = 4,
+                statusEquipe = diarioAtual.statusEquipe,
+                statusEquipamento = diarioAtual.statusEquipamento,
+                statusCarregamento = StatusEtapa.CONCLUIDA,
+                statusServicos = StatusEtapa.DISPONIVEL,
+                statusFechamentoServicos = diarioAtual.statusFechamentoServicos,
+                statusRetornoBase = diarioAtual.statusRetornoBase,
+                statusFechamentoDo = diarioAtual.statusFechamentoDo,
+                diarioFechado = diarioAtual.diarioFechado
             )
         }
     }
@@ -362,6 +427,7 @@ class DiarioRepository(
                 observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
                 retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
                 observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                horarioPontoCidade = diarioAtual.horarioPontoCidade,
                 fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
                 enderecoHospedagem = diarioAtual.enderecoHospedagem,
                 diarioFechado = diarioAtual.diarioFechado
@@ -379,6 +445,7 @@ class DiarioRepository(
                 observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
                 retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
                 observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                horarioPontoCidade = diarioAtual.horarioPontoCidade,
                 fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
                 enderecoHospedagem = diarioAtual.enderecoHospedagem,
                 diarioFechado = diarioAtual.diarioFechado
@@ -397,6 +464,7 @@ class DiarioRepository(
                 diarioId = diarioId, saidaRetornoBase = saidaRetornoBase,
                 chegadaBase = chegadaBase, observacaoRetornoBase = observacaoRetornoBase,
                 retornoBaseConcluido = true, observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                horarioPontoCidade = diarioAtual.horarioPontoCidade,
                 fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
                 enderecoHospedagem = diarioAtual.enderecoHospedagem,
                 diarioFechado = diarioAtual.diarioFechado
@@ -426,7 +494,9 @@ class DiarioRepository(
         }
     }
 
-    suspend fun concluirFechamentoDo(diarioId: Long, observacaoFinalDo: String) {
+    suspend fun concluirFechamentoDo(
+        diarioId: Long, observacaoFinalDo: String, horarioPontoCidade: String? = null
+    ) {
         db.withTransaction {
             val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
 
@@ -436,6 +506,7 @@ class DiarioRepository(
                 observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
                 retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
                 observacaoFinalDo = observacaoFinalDo,
+                horarioPontoCidade = horarioPontoCidade,
                 fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
                 enderecoHospedagem = diarioAtual.enderecoHospedagem,
                 diarioFechado = true
@@ -456,7 +527,10 @@ class DiarioRepository(
 
     suspend fun adicionarDesvioCompleto(
         diarioId: Long, codigo: String, descricao: String,
-        inicio: String, fim: String, observacao: String
+        inicio: String, fim: String, observacao: String,
+        litros: Double = 0.0, fotoTicketUri: String = "",
+        latitude: Double = 0.0, longitude: Double = 0.0,
+        endereco: String = ""
     ) {
         db.withTransaction {
             val diarioAtual = dao.buscarDiarioPorId(diarioId) ?: return@withTransaction
@@ -466,7 +540,10 @@ class DiarioRepository(
             dao.inserirDesvio(
                 DesvioItemEntity(
                     diarioId = diarioId, codigo = codigo, descricao = descricao,
-                    inicio = inicio, fim = fim, observacao = observacao
+                    inicio = inicio, fim = fim, observacao = observacao,
+                    litros = litros, fotoTicketUri = fotoTicketUri,
+                    latitude = latitude, longitude = longitude,
+                    endereco = endereco
                 )
             )
         }
@@ -561,6 +638,7 @@ class DiarioRepository(
                 diarioId = diarioId, saidaRetornoBase = saidaRetornoBase,
                 chegadaBase = chegadaBase, observacaoRetornoBase = observacaoRetornoBase,
                 retornoBaseConcluido = retornoBaseConcluido, observacaoFinalDo = observacaoFinalDo,
+                horarioPontoCidade = diarioAtual.horarioPontoCidade,
                 fotoHospedagemPath = diarioAtual.fotoHospedagemPath,
                 enderecoHospedagem = diarioAtual.enderecoHospedagem,
                 diarioFechado = diarioFechado
@@ -577,6 +655,7 @@ class DiarioRepository(
                 observacaoRetornoBase = diarioAtual.observacaoRetornoBase,
                 retornoBaseConcluido = diarioAtual.retornoBaseConcluido,
                 observacaoFinalDo = diarioAtual.observacaoFinalDo,
+                horarioPontoCidade = diarioAtual.horarioPontoCidade,
                 fotoHospedagemPath = caminhoFoto, enderecoHospedagem = endereco,
                 diarioFechado = diarioAtual.diarioFechado
             )
@@ -636,6 +715,7 @@ class DiarioRepository(
                 observacaoRetornoBase = "Continua no diário do contrato: $contratoDestinoDescricao",
                 retornoBaseConcluido = true,
                 observacaoFinalDo = diarioOrigem.observacaoFinalDo,
+                horarioPontoCidade = diarioOrigem.horarioPontoCidade,
                 fotoHospedagemPath = diarioOrigem.fotoHospedagemPath,
                 enderecoHospedagem = diarioOrigem.enderecoHospedagem,
                 diarioFechado = diarioOrigem.diarioFechado
@@ -690,8 +770,161 @@ class DiarioRepository(
         )
     }
 
+    suspend fun montarDiarioParaJson(diarioId: Long): DiarioJsonExport? {
+        val diarioCompleto = dao.buscarDiarioCompletoPorId(diarioId) ?: return null
+        val d = diarioCompleto.diario
+        val o = diarioCompleto.obra
+        val carregamentos = dao.listarCarregamentosDireto(diarioId)
+        val abastecimentos = dao.listarAbastecimentosDireto(diarioId)
+
+        val servicosJson = diarioCompleto.servicos.map { servico ->
+            val areas = dao.listarServicoAreasDireto(servico.id)
+            ServicoJson(
+                ordemServico = servico.ordemServico,
+                tipo = servico.tipo,
+                numeroProtocolo = servico.numeroProtocolo,
+                endereco = servico.endereco,
+                comprimento = servico.comprimento,
+                largura = servico.largura,
+                altura = servico.altura,
+                inicio = servico.inicio,
+                fim = servico.fim,
+                latitude = servico.latitude,
+                longitude = servico.longitude,
+                nomeRua = servico.nomeRua,
+                fotoAntes = servico.fotoUri,
+                horarioFotoAntes = servico.horarioFotoAntes,
+                fotoCavaAberta = servico.fotoCavaAbertaUri,
+                fotoEspessura = servico.fotoEspessuraUri,
+                fotoConclusao = servico.fotoConclusaoUri,
+                horarioFotoConclusao = servico.horarioFotoConclusao,
+                aberturaCava = servico.aberturaCava,
+                limpezaEntulho = servico.limpezaEntulho,
+                pinturaLigacao = servico.pinturaLigacao,
+                equipamentoCompactacaoUsado = servico.equipamentoCompactacaoUsado,
+                areas = areas.map { area ->
+                    ServicoAreaJson(
+                        ordem = area.ordem,
+                        comprimento = area.comprimento,
+                        largura = area.largura,
+                        espessuraCm = area.espessuraCm
+                    )
+                }
+            )
+        }
+
+        return DiarioJsonExport(
+            data = d.data,
+            obra = ObraJson(
+                nome = o.nome,
+                local = o.local,
+                contratante = o.contratante,
+                contrato = o.contrato,
+                dataInicioContrato = o.dataInicioContrato,
+                prazoContratoDias = o.prazoContratoDias,
+                espessuraContratoCm = o.espessuraContratoCm
+            ),
+            status = StatusJson(
+                etapaAtual = d.etapaAtual,
+                equipe = d.statusEquipe.name,
+                equipamento = d.statusEquipamento.name,
+                carregamento = d.statusCarregamento.name,
+                servicos = d.statusServicos.name,
+                fechamentoServicos = d.statusFechamentoServicos.name,
+                retornoBase = d.statusRetornoBase.name,
+                fechamentoDo = d.statusFechamentoDo.name,
+                diarioFechado = d.diarioFechado
+            ),
+            equipe = EquipeJson(
+                encarregado = d.encarregado,
+                membros = d.equipe.paraLista()
+            ),
+            equipamento = EquipamentoJson(
+                veiculo = d.veiculo,
+                auxiliares = d.equipamentosAuxiliares.paraLista(),
+                compactacao = d.equipamentosCompactacao.paraLista()
+            ),
+            deslocamentos = diarioCompleto.deslocamentos.map { deslocamento ->
+                DeslocamentoJson(
+                    ordem = deslocamento.ordem,
+                    titulo = deslocamento.titulo,
+                    inicio = deslocamento.inicio,
+                    fim = deslocamento.fim
+                )
+            },
+            carregamentos = carregamentos.map { carregamento ->
+                CarregamentoJson(
+                    ordem = carregamento.ordem,
+                    veiculo = carregamento.veiculo,
+                    chegadaUsina = carregamento.chegadaUsina,
+                    inicioCarregamento = carregamento.inicioCarregamento,
+                    fimCarregamento = carregamento.fimCarregamento,
+                    horarioPesagem = carregamento.horarioPesagem,
+                    saidaUsinaTrecho = carregamento.saidaUsinaTrecho,
+                    localCarregamento = carregamento.localCarregamento,
+                    pesoLiquidoTon = carregamento.pesoLiquidoTon,
+                    fotoTicket = carregamento.fotoTicketUri,
+                    latitude = carregamento.latitude,
+                    longitude = carregamento.longitude
+                )
+            },
+            abastecimentos = abastecimentos.map { abastecimento ->
+                AbastecimentoJson(
+                    veiculo = abastecimento.veiculo,
+                    litros = abastecimento.litros,
+                    fotoTicket = abastecimento.fotoTicketUri,
+                    horario = abastecimento.horario
+                )
+            },
+            intervalo = IntervaloJson(
+                inicio = d.inicioIntervalo,
+                fim = d.fimIntervalo,
+                observacao = d.observacaoIntervalo,
+                registrado = d.intervaloRegistrado
+            ),
+            fechamentoServicos = FechamentoServicosJson(
+                horario = d.horarioFechamentoServicos,
+                observacao = d.observacaoFechamentoServicos,
+                proximoDestino = d.proximoDestino,
+                concluido = d.fechamentoServicosConcluido
+            ),
+            retornoBase = RetornoBaseJson(
+                saida = d.saidaRetornoBase,
+                chegada = d.chegadaBase,
+                observacao = d.observacaoRetornoBase,
+                concluido = d.retornoBaseConcluido,
+                fotoHospedagem = d.fotoHospedagemPath,
+                enderecoHospedagem = d.enderecoHospedagem
+            ),
+            fechamentoDo = FechamentoDoJson(
+                observacaoFinal = d.observacaoFinalDo,
+                horarioPontoCidade = d.horarioPontoCidade
+            ),
+            desvios = diarioCompleto.desvios.map { desvio ->
+                DesvioJson(
+                    codigo = desvio.codigo,
+                    descricao = desvio.descricao,
+                    inicio = desvio.inicio,
+                    fim = desvio.fim,
+                    observacao = desvio.observacao,
+                    litros = desvio.litros,
+                    fotoTicket = desvio.fotoTicketUri,
+                    latitude = desvio.latitude,
+                    longitude = desvio.longitude,
+                    endereco = desvio.endereco
+                )
+            },
+            servicos = servicosJson
+        )
+    }
+
     // ── Helpers privados ─────────────────────────────────────────────────
 
     private fun horaAtual(): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
     private fun dataAtual(): String = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
+
+    suspend fun marcarDiarioComoSincronizado(diarioId: Long) {
+        val diario = dao.buscarDiarioPorId(diarioId) ?: return
+        dao.atualizarDiario(diario.copy(sincronizado = true))
+    }
 }

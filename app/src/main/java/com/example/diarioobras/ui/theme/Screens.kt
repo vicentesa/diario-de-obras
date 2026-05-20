@@ -82,6 +82,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,6 +100,7 @@ fun ObrasScreen(
     var contrato by remember { mutableStateOf("") }
     var dataInicioContrato by remember { mutableStateOf("") }
     var prazoContratoDias by remember { mutableStateOf("") }
+    var espessuraContratoCm by remember { mutableStateOf("") }
     var mostrarCadastro by remember { mutableStateOf(false) }
 
     val focusManager = LocalFocusManager.current
@@ -261,6 +264,25 @@ fun ObrasScreen(
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = espessuraContratoCm,
+                    onValueChange = { novo ->
+                        val filtrado = novo.filter { it.isDigit() || it == '.' || it == ',' }
+                        espessuraContratoCm = filtrado
+                    },
+                    label = { Text("Espessura de contrato (cm)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
                         imeAction = ImeAction.Done
                     ),
                     keyboardActions = KeyboardActions(
@@ -278,7 +300,9 @@ fun ObrasScreen(
                             contratante = contratante,
                             contrato = contrato,
                             dataInicioContrato = dataInicioContrato,
-                            prazoContratoDias = prazoContratoDias.toIntOrNull() ?: 0
+                            prazoContratoDias = prazoContratoDias.toIntOrNull() ?: 0,
+                            espessuraContratoCm = espessuraContratoCm
+                                .replace(',', '.').toDoubleOrNull() ?: 0.0
                         )
                         nome = ""
                         local = ""
@@ -286,6 +310,7 @@ fun ObrasScreen(
                         contrato = ""
                         dataInicioContrato = ""
                         prazoContratoDias = ""
+                        espessuraContratoCm = ""
                         mostrarCadastro = false
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -365,8 +390,41 @@ fun ObraDetalheScreen(
                         onClick = { onAbrirDiario(diario.id) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Diário ${diario.data}", style = MaterialTheme.typography.titleMedium)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Diário ${diario.data}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = if (diario.diarioFechado && !diario.sincronizado)
+                                        Color.Red
+                                    else
+                                        Color.Unspecified
+                                )
+                                if (diario.diarioFechado && !diario.sincronizado) {
+                                    Text(
+                                        text = "Não enviado ao servidor",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Red
+                                    )
+                                }
+                            }
+                            if (diario.diarioFechado && !diario.sincronizado) {
+                                IconButton(
+                                    onClick = { viewModel.reenviarDiario(diario.id) }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Refresh,
+                                        contentDescription = "Reenviar",
+                                        tint = Color.Red
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -450,6 +508,7 @@ fun DiarioScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
+            fotoUri?.let { uri -> scope.launch { comprimirFoto(context, uri); salvarFotoNaGaleria(context, uri) } }
             if (
                 ContextCompat.checkSelfPermission(
                     context,
@@ -501,6 +560,7 @@ fun DiarioScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
+            fotoTicketUri?.let { uri -> scope.launch { comprimirFoto(context, uri); salvarFotoNaGaleria(context, uri) } }
             viewModel.atualizarCarregamentoDiario(
                 diarioId = diarioId,
                 localCarregamento = localCarregamentoSelecionado,
@@ -1624,7 +1684,7 @@ fun DeslocamentoCard(
 }
 
 @Composable
-private fun HoraMinutoDialog(
+fun HoraMinutoDialog(
     titulo: String,
     valorAtual: String?,
     onDismiss: () -> Unit,
@@ -1762,6 +1822,11 @@ fun ObraInfoScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text("Prazo do contrato (dias): ${it.prazoContratoDias}")
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (it.espessuraContratoCm > 0.0) {
+                        Text("Espessura de contrato: ${it.espessuraContratoCm} cm")
+                    }
                 }
             }
 

@@ -26,7 +26,8 @@ data class ObraEntity(
     val contratante: String = "",
     val contrato: String = "",
     val dataInicioContrato: String = "",
-    val prazoContratoDias: Int = 0
+    val prazoContratoDias: Int = 0,
+    val espessuraContratoCm: Double = 0.0
 )
 
 @Entity(
@@ -42,7 +43,7 @@ data class ObraEntity(
 )
 data class DiarioEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-   val obraId: Long,
+    val obraId: Long,
     val data: String,
 
     // Etapa 1 - Equipe
@@ -93,11 +94,11 @@ data class DiarioEntity(
 
     // Etapa 7 - Fechamento do D.O.
     val observacaoFinalDo: String = "",
+    val horarioPontoCidade: String? = null,
     val diarioFechado: Boolean = false,
 
     val sincronizado: Boolean = false
 )
-
 
 @Entity(
     tableName = "deslocamentos",
@@ -134,18 +135,38 @@ data class CarregamentoItemEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val diarioId: Long,
     val ordem: Int,
-
     val veiculo: String = "",
-
     val chegadaUsina: String? = null,
     val inicioCarregamento: String? = null,
     val fimCarregamento: String? = null,
     val horarioPesagem: String? = null,
     val saidaUsinaTrecho: String? = null,
-
     val localCarregamento: String = "",
     val pesoLiquidoTon: String = "",
-    val fotoTicketUri: String = ""
+    val fotoTicketUri: String = "",
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0
+)
+
+@Entity(
+    tableName = "abastecimentos",
+    foreignKeys = [
+        ForeignKey(
+            entity = DiarioEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["diarioId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("diarioId")]
+)
+data class AbastecimentoItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val diarioId: Long,
+    val veiculo: String = "",
+    val litros: Double = 0.0,
+    val fotoTicketUri: String = "",
+    val horario: String? = null
 )
 
 @Entity(
@@ -166,7 +187,13 @@ data class DesvioItemEntity(
     val descricao: String,
     val inicio: String = "",
     val fim: String = "",
-    val observacao: String = ""
+    val observacao: String = "",
+    // Campos extras para desvio AB (Abastecimento)
+    val litros: Double = 0.0,
+    val fotoTicketUri: String = "",
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val endereco: String = ""
 )
 
 @Entity(
@@ -188,31 +215,25 @@ data class ServicoEntity(
     val ordemServico: Int,
     val numeroProtocolo: String = "",
     val endereco: String = "",
-
     val comprimento: Double = 0.0,
     val largura: Double = 0.0,
     val altura: Double = 0.0,
-
     val inicio: String? = null,
     val fim: String? = null,
-
     val latitude: Double? = null,
     val longitude: Double? = null,
     val nomeRua: String? = null,
-
     val fotoUri: String? = null,
     val horarioFotoAntes: String? = null,
     val fotoCavaAbertaUri: String? = null,
     val fotoEspessuraUri: String? = null,
     val fotoConclusaoUri: String? = null,
     val horarioFotoConclusao: String? = null,
-
     val sincronizado: Boolean = false,
     val aberturaCava: String = "",
     val limpezaEntulho: String = "",
     val pinturaLigacao: Boolean = false,
     val equipamentoCompactacaoUsado: String = ""
-
 )
 
 @Entity(

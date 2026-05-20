@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.diarioobras.data.AbastecimentoItemEntity
 import com.example.diarioobras.data.AppDatabase
 import com.example.diarioobras.data.CarregamentoItemEntity
 import com.example.diarioobras.data.DeslocamentoItemEntity
@@ -17,14 +18,32 @@ import com.example.diarioobras.data.ServicoAreaEntity
 import com.example.diarioobras.data.ServicoEntity
 import com.example.diarioobras.data.StatusEtapa
 import com.example.diarioobras.data.SubservicoEntity
+import com.example.diarioobras.data.FirebaseUploadService
+import com.google.gson.GsonBuilder
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 
+sealed class UploadEstado {
+    object Ocioso : UploadEstado()
+    object Enviando : UploadEstado()
+    object Sucesso : UploadEstado()
+    data class Erro(val mensagem: String) : UploadEstado()
+}
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = DiarioRepository(AppDatabase.getInstance(application))
+    private val uploadService = FirebaseUploadService()
+
+    private val _uploadEstado = MutableStateFlow<UploadEstado>(UploadEstado.Ocioso)
+    val uploadEstado: StateFlow<UploadEstado> = _uploadEstado.asStateFlow()
+
+    fun resetarUploadEstado() { _uploadEstado.value = UploadEstado.Ocioso }
 
     // ── Leituras (suspend) ───────────────────────────────────────────────
 
@@ -85,15 +104,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun buscarDiarioFlow(diarioId: Long) = repository.buscarDiarioFlow(diarioId)
 
+    fun abastecimentosDoDiario(diarioId: Long) =
+        repository.listarAbastecimentos(diarioId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // ── Wrappers fire-and-forget ─────────────────────────────────────────
 
     fun adicionarObra(
         nome: String, local: String, contratante: String,
-        contrato: String, dataInicioContrato: String, prazoContratoDias: Int
+        contrato: String, dataInicioContrato: String, prazoContratoDias: Int,
+        espessuraContratoCm: Double = 0.0
     ) {
         if (nome.isBlank()) return
         viewModelScope.launch {
-            repository.inserirObra(nome, local, contratante, contrato, dataInicioContrato, prazoContratoDias)
+            repository.inserirObra(nome, local, contratante, contrato, dataInicioContrato, prazoContratoDias, espessuraContratoCm)
         }
     }
 
@@ -148,6 +172,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun excluirCarregamento(item: CarregamentoItemEntity) {
         viewModelScope.launch { repository.excluirCarregamento(item) }
+    }
+
+    fun salvarCarregamentoEtapa3(
+        diarioId: Long, veiculo: String, pesoLiquidoTon: String, fotoTicketUri: String,
+        latitude: Double, longitude: Double
+    ) {
+        viewModelScope.launch {
+            repository.salvarCarregamentoEtapa3(diarioId, veiculo, pesoLiquidoTon, fotoTicketUri, latitude, longitude)
+        }
     }
 
     fun marcarInicio(item: DeslocamentoItemEntity) {
@@ -210,16 +243,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.atualizarObservacaoDesvio(id, texto) }
     }
 
-    fun concluirFechamentoDo(diarioId: Long, observacaoFinalDo: String) {
-        viewModelScope.launch { repository.concluirFechamentoDo(diarioId, observacaoFinalDo) }
+    fun concluirFechamentoDo(
+        diarioId: Long, observacaoFinalDo: String, horarioPontoCidade: String? = null
+    ) {
+        viewModelScope.launch {
+            repository.concluirFechamentoDo(diarioId, observacaoFinalDo, horarioPontoCidade)
+            val jsonExport = repository.montarDiarioParaJson(diarioId)
+            if (jsonExport == null) {
+                _uploadEstado.value = UploadEstado.Erro("Não foi possível montar o JSON do diário")
+                return@launch
+            }
+            _uploadEstado.value = UploadEstado.Enviando
+            val resultado = uploadService.enviarDiario(getApplication(), jsonExport)
+            if (resultado.isSuccess) {
+                _uploadEstado.value = UploadEstado.Sucesso
+                repository.marcarDiarioComoSincronizado(diarioId)
+            } else {
+                _uploadEstado.value = UploadEstado.Erro(resultado.exceptionOrNull()?.message ?: "Erro ao enviar")
+            }
+        }
     }
 
     fun adicionarDesvioCompleto(
         diarioId: Long, codigo: String, descricao: String,
-        inicio: String, fim: String, observacao: String
+        inicio: String, fim: String, observacao: String,
+        litros: Double = 0.0, fotoTicketUri: String = "",
+        latitude: Double = 0.0, longitude: Double = 0.0,
+        endereco: String = ""
     ) {
         viewModelScope.launch {
-            repository.adicionarDesvioCompleto(diarioId, codigo, descricao, inicio, fim, observacao)
+            repository.adicionarDesvioCompleto(
+                diarioId, codigo, descricao, inicio, fim, observacao,
+                litros, fotoTicketUri, latitude, longitude, endereco
+            )
         }
     }
 
@@ -322,7 +378,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ── Abastecimento ────────────────────────────────────────────────────
+
+    fun salvarAbastecimento(
+        diarioId: Long, veiculo: String, litros: Double,
+        fotoTicketUri: String, horario: String
+    ) {
+        viewModelScope.launch {
+            repository.salvarAbastecimento(diarioId, veiculo, litros, fotoTicketUri, horario)
+        }
+    }
+
+    fun excluirAbastecimento(item: AbastecimentoItemEntity) {
+        viewModelScope.launch { repository.excluirAbastecimento(item) }
+    }
+
     // ── Exportação / relatório ───────────────────────────────────────────
+
+    suspend fun salvarJsonDiarioNoApp(context: Context, diarioId: Long): String? {
+        val jsonExport = repository.montarDiarioParaJson(diarioId) ?: return null
+        val dataLimpa = jsonExport.data.replace("/", "-")
+        val nomeArquivo = "diario_${dataLimpa}_${diarioId}.json"
+        val gson = GsonBuilder().setPrettyPrinting().create()
+        val conteudo = gson.toJson(jsonExport)
+        context.openFileOutput(nomeArquivo, Context.MODE_PRIVATE).use { it.write(conteudo.toByteArray()) }
+        return nomeArquivo
+    }
+
+    fun obterUriJsonSalvo(context: Context, nomeArquivo: String): Uri {
+        val arquivo = File(context.filesDir, nomeArquivo)
+        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", arquivo)
+    }
 
     suspend fun gerarCsvDiarioPorId(diarioId: Long): String? {
         val exportacao = repository.montarDiarioParaExportacao(diarioId) ?: return null
@@ -494,5 +580,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val texto = valor?.toString().orEmpty()
         val escapado = texto.replace("\"", "\"\"")
         return "\"$escapado\""
+    }
+
+    //suspend fun marcarDiarioComoSincronizado(diarioId: Long) {
+    //    val diario = dao.buscarDiarioPorId(diarioId) ?: return
+    //    dao.atualizarDiario(diario.copy(sincronizado = true))
+    //}
+
+    fun reenviarDiario(diarioId: Long) {
+        viewModelScope.launch {
+            val jsonExport = repository.montarDiarioParaJson(diarioId)
+            if (jsonExport == null) {
+                _uploadEstado.value = UploadEstado.Erro("Não foi possível montar o JSON do diário")
+                return@launch
+            }
+            _uploadEstado.value = UploadEstado.Enviando
+            val resultado = uploadService.enviarDiario(getApplication(), jsonExport)
+            if (resultado.isSuccess) {
+                _uploadEstado.value = UploadEstado.Sucesso
+                repository.marcarDiarioComoSincronizado(diarioId)
+            } else {
+                _uploadEstado.value = UploadEstado.Erro(resultado.exceptionOrNull()?.message ?: "Erro ao enviar")
+            }
+        }
     }
 }

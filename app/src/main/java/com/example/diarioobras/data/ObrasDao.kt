@@ -188,6 +188,7 @@ interface ObrasDao {
             observacaoRetornoBase = :observacaoRetornoBase,
             retornoBaseConcluido = :retornoBaseConcluido,
             observacaoFinalDo = :observacaoFinalDo,
+            horarioPontoCidade = :horarioPontoCidade,
             fotoHospedagemPath = :fotoHospedagemPath,
             enderecoHospedagem = :enderecoHospedagem,
             diarioFechado = :diarioFechado
@@ -201,6 +202,7 @@ interface ObrasDao {
         observacaoRetornoBase: String,
         retornoBaseConcluido: Boolean,
         observacaoFinalDo: String,
+        horarioPontoCidade: String?,
         fotoHospedagemPath: String,
         enderecoHospedagem: String,
         diarioFechado: Boolean
@@ -238,6 +240,24 @@ interface ObrasDao {
 
     @Query("SELECT * FROM desvios WHERE id = :id LIMIT 1")
     suspend fun buscarDesvioPorId(id: Long): DesvioItemEntity?
+
+    // Abastecimento
+    @Insert
+    suspend fun inserirAbastecimento(item: AbastecimentoItemEntity): Long
+
+    @Query("SELECT * FROM abastecimentos WHERE diarioId = :diarioId ORDER BY id ASC")
+    fun listarAbastecimentos(diarioId: Long): Flow<List<AbastecimentoItemEntity>>
+
+    @Update
+    suspend fun atualizarAbastecimento(item: AbastecimentoItemEntity)
+
+    @Delete
+    suspend fun excluirAbastecimento(item: AbastecimentoItemEntity)
+
+    @Query("SELECT * FROM abastecimentos WHERE diarioId = :diarioId ORDER BY id ASC")
+    suspend fun listarAbastecimentosDireto(diarioId: Long): List<AbastecimentoItemEntity>
+
+
 
 
 }

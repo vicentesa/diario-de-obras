@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.kapt")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -9,7 +10,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.diarioobras"
+        applicationId = "com.example.diarioobras.dev"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
@@ -81,11 +82,17 @@ dependencies {
     kapt("androidx.room:room-compiler:2.6.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
 
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // Firebase
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-firestore-ktx")
+    implementation("com.google.firebase:firebase-storage-ktx")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
