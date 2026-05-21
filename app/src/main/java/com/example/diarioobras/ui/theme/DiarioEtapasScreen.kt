@@ -1,4 +1,4 @@
-package com.example.diarioobras.ui
+﻿package com.example.diarioobras.ui
 
 import android.Manifest
 import android.content.Context
@@ -36,15 +36,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.PopupProperties
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.diarioobras.data.DiarioEntity
 import com.example.diarioobras.data.ObraEntity
 import com.google.android.gms.location.LocationServices
-import java.io.File
 import java.util.Locale
-import java.util.UUID
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.layout.ContentScale
@@ -92,49 +89,9 @@ fun DiarioEtapasScreen(
     diarioId: Long,
     viewModel: MainViewModel,
     navController: NavHostController,
-    abaInicial: Int,
     onAbrirServico: (Long) -> Unit,
     onAbrirDiario: (Long) -> Unit
 ) {
-
-    val tiposDesvio: List<Pair<String, String>> = listOf(
-        "AB" to "Abastecimento",
-        "P1" to "Refeição / Intervalo",
-        "P2" to "Chuva",
-        "P3" to "Quebra veículo",
-        "P4" to "Quebra gerador",
-        "P5" to "Quebra martelete",
-        "P6" to "Quebra compactador de percussão",
-        "P7" to "Quebra placa vibratória",
-        "P8" to "Falta de material - insumos",
-        "P9" to "Falta de material hidráulico",
-        "P10" to "Falta de ferramentas",
-        "P11" to "Aguardando fila (usina)",
-        "P12" to "Carregamento asfalto",
-        "P13" to "Deslocamento",
-        "P14" to "Quebra equipamento de escavação",
-        "P15" to "Quebra rompedor hidráulico",
-        "P16" to "Interferência rede de água",
-        "P17" to "Interferência rede pluvial",
-        "P18" to "Interferência rede elétrica/dados",
-        "P19" to "Aguardando fiscalização",
-        "P20" to "Solicitação órgão público",
-        "P21" to "Encontrado rocha",
-        "P22" to "Solicitação setor segurança",
-        "P23" to "Falta de EPI",
-        "P24" to "Falta de EPC",
-        "P25" to "Sinalização de via",
-        "P30" to "Falta de colaborador",
-        "P31" to "Aguardando liberação",
-        "P34" to "Programação insuficiente",
-        "P35" to "Sem atividade",
-        "P38" to "DDS",
-        "P39" to "Treinamento",
-        "P45" to "Limpeza do canteiro",
-        "T1" to "Trabalhando",
-        "T2" to "Retrabalho / garantia",
-        "T3" to "Outro serviço já apontado"
-    )
 
     var obra by remember { mutableStateOf<ObraEntity?>(null) }
     var etapaExpandida by remember(diarioId) { mutableStateOf(1) }
@@ -178,7 +135,6 @@ fun DiarioEtapasScreen(
     var equipamentosSelecionados by remember(diarioId) { mutableStateOf(setOf<String>()) }
 
     // Etapa 3
-    var menuVeiculoEtapa3Expandido by remember { mutableStateOf(false) }
     var veiculoEtapa3Selecionado by remember(diarioId) { mutableStateOf("") }
     val quantidadesEtapa3 = remember(diarioId) { mutableStateListOf<String>() }
     var fotoTicketEtapa3Uri by remember(diarioId) { mutableStateOf<Uri?>(null) }
@@ -186,34 +142,6 @@ fun DiarioEtapasScreen(
     var longitudeTicket by remember(diarioId) { mutableStateOf(0.0) }
     var mostrarTicketAmpliado by remember { mutableStateOf(false) }
     var versaoPreviewTicket by remember(diarioId) { mutableStateOf(0) }
-    var menuVeiculoAbastecimentoExpandido by remember { mutableStateOf(false) }
-    var veiculoAbastecimentoSelecionado by remember(diarioId) { mutableStateOf("") }
-    var litrosAbastecimento by remember(diarioId) { mutableStateOf("") }
-    var fotoAbastecimentoUri by remember(diarioId) { mutableStateOf<Uri?>(null) }
-    var versaoPreviewAbastecimento by remember(diarioId) { mutableStateOf(0) }
-    var latitudeDesvioAb by remember { mutableStateOf(0.0) }
-    var longitudeDesvioAb by remember { mutableStateOf(0.0) }
-
-    // Etapa 4
-    var exibindoCadastroServico by remember(diarioId) { mutableStateOf(false) }
-    var descricaoServicoEtapa4 by remember(diarioId) { mutableStateOf("") }
-
-    var protocolo by remember { mutableStateOf("") }
-    var ordemServico by remember { mutableStateOf("") }
-    var endereco by remember { mutableStateOf("") }
-
-    var aberturaCava by remember { mutableStateOf("") }
-    var menuAberturaExpandido by remember { mutableStateOf(false) }
-
-    var limpezaEntulho by remember { mutableStateOf("") }
-    var menuLimpezaExpandido by remember { mutableStateOf(false) }
-
-    var fotoAntesUri by remember { mutableStateOf<Uri?>(null) }
-
-    var latitudeServico by remember { mutableStateOf<Double?>(null) }
-    var longitudeServico by remember { mutableStateOf<Double?>(null) }
-    var enderecoServico by remember { mutableStateOf("") }
-
     var servicoSelecionadoParaExcluir by remember { mutableStateOf<Long?>(null) }
     var servicoPendenteExclusao by remember { mutableStateOf<ServicoEntity?>(null) }
 
@@ -251,8 +179,6 @@ fun DiarioEtapasScreen(
 
     var menuOutroContratoExpandido by remember { mutableStateOf(false) }
     var outroContratoSelecionado by remember(diarioId) { mutableStateOf("") }
-
-    var menuTipoDesvioExpandido by remember { mutableStateOf(false) }
 
     val hospedagemCameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
@@ -443,50 +369,6 @@ fun DiarioEtapasScreen(
         }
     }
 
-    val cameraServicoLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success) {
-            fotoAntesUri?.let { uri -> coroutineScope.launch { comprimirFoto(context, uri); salvarFotoNaGaleria(context, uri) } }
-            fusedLocationClient.lastLocation
-                .addOnSuccessListener { location: Location? ->
-                    if (location != null) {
-                        latitudeServico = location.latitude
-                        longitudeServico = location.longitude
-
-                        val geocoder = Geocoder(context, Locale.getDefault())
-
-                        try {
-                            val lista = geocoder.getFromLocation(
-                                latitudeServico!!,
-                                longitudeServico!!,
-                                1
-                            )
-
-                            if (!lista.isNullOrEmpty()) {
-                                val enderecoCompleto = lista[0].getAddressLine(0)
-                                endereco = enderecoCompleto ?: ""
-                            }
-                        } catch (_: Exception) {
-                            endereco = "Endereço não encontrado"
-                        }
-                    } else {
-                        endereco = "Localização indisponível"
-                    }
-                }
-        }
-    }
-
-    val cameraPermissionServicoLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            val novaUri = criarUriParaFotoEtapa(context)
-            fotoAntesUri = novaUri
-            cameraServicoLauncher.launch(novaUri)
-        }
-    }
-
     val ticketCameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
@@ -535,38 +417,6 @@ fun DiarioEtapasScreen(
         }
     }
 
-    val abastecimentoCameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { sucesso ->
-        if (sucesso) {
-            versaoPreviewAbastecimento++
-            fotoAbastecimentoUri?.let { uri ->
-                coroutineScope.launch {
-                    comprimirFoto(context, uri)
-                    salvarFotoNaGaleria(context, uri)
-                }
-            }
-        }
-    }
-
-    var litrosDesvioAb by remember { mutableStateOf("") }
-    var fotoTicketDesvioAbUri by remember { mutableStateOf<Uri?>(null) }
-    var versaoPreviewDesvioAb by remember { mutableStateOf(0) }
-
-    val desvioAbCameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { sucesso ->
-        if (sucesso) {
-            versaoPreviewDesvioAb++
-            fotoTicketDesvioAbUri?.let { uri ->
-                coroutineScope.launch {
-                    comprimirFoto(context, uri)
-                    salvarFotoNaGaleria(context, uri)
-                }
-            }
-        }
-    }
-
     val hospedagemCameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -576,10 +426,6 @@ fun DiarioEtapasScreen(
             hospedagemCameraLauncher.launch(novaUri)
         }
     }
-
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { _ -> }
 
     val deslocamentosEtapa1 = deslocamentos.filter { item ->
         val titulo = item.titulo.trim().lowercase()
@@ -604,11 +450,6 @@ fun DiarioEtapasScreen(
     val deslocamentoFimCarregamento = deslocamentos.filter {
         it.titulo.equals("Término do carregamento", ignoreCase = true)
     }
-
-    val veiculosDisponiveisEtapa3 = diario?.veiculo
-        ?.split(" / ")
-        ?.filter { it.isNotBlank() }
-        ?: emptyList()
 
     val veiculosEtapa3 = diario?.veiculo
         ?.split(" / ")
@@ -641,17 +482,6 @@ fun DiarioEtapasScreen(
         }
     }
 
-    val veiculosJaCarregados = remember(carregamentos) {
-        carregamentos
-            .map { it.veiculo }
-            .filter { it.isNotBlank() }
-            .toSet()
-    }
-
-    val veiculosPendentesEtapa3 = remember(veiculosDisponiveisEtapa3, veiculosJaCarregados) {
-        veiculosDisponiveisEtapa3.filter { !veiculosJaCarregados.contains(it) }
-    }
-
     val deslocamentoPesagemCarregado = deslocamentos.filter {
         it.titulo.equals("Pesagem do caminhão carregado", ignoreCase = true)
     }
@@ -662,14 +492,6 @@ fun DiarioEtapasScreen(
 
     val deslocamentoChegadaTrechoEtapa4 = deslocamentos.filter {
         it.titulo.equals("Chegada no trecho", ignoreCase = true)
-    }
-
-    val quantidadesPorVeiculoEtapa3 = remember(diarioId) {
-        mutableStateMapOf<String, String>()
-    }
-
-    val todasQuantidadesPreenchidas = veiculosEtapa3.all { veiculo ->
-        quantidadesPorVeiculoEtapa3[veiculo].orEmpty().isNotBlank()
     }
 
     Scaffold(
@@ -1072,7 +894,7 @@ fun DiarioEtapasScreen(
 
                 EtapaCard(
                     numero = 3,
-                    titulo = "Carregamento / Abastecimento",
+                    titulo = "Carregamento",
                     status = diario?.statusCarregamento ?: StatusEtapa.BLOQUEADA,
                     expandida = etapaExpandida == 3,
                     onClick = {
@@ -1093,10 +915,6 @@ fun DiarioEtapasScreen(
                                     todasQuantidadesPreenchidasLocais &&
                                     fotoTicketEtapa3Uri != null
 
-                        val abastecimentosFlow = remember(diarioId) { viewModel.abastecimentosDoDiario(diarioId) }
-                        val abastecimentos by abastecimentosFlow.collectAsStateWithLifecycle()
-
-
                         Column {
                             Text("Chegada na usina", style = MaterialTheme.typography.titleSmall)
                             Spacer(modifier = Modifier.height(8.dp))
@@ -1115,189 +933,7 @@ fun DiarioEtapasScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
                             }
 
-                            // Abastecimento na usina
-                            var houvAbastecimento by remember(diarioId) { mutableStateOf<Boolean?>(null) }
-                            Text("Abastecimento na usina", style = MaterialTheme.typography.titleSmall)
                             Spacer(modifier = Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(
-                                    onClick = { houvAbastecimento = true },
-                                    enabled = !diarioFechado,
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = if (houvAbastecimento == true)
-                                            MaterialTheme.colorScheme.primaryContainer
-                                        else Color.Transparent
-                                    )
-                                ) { Text("Sim") }
-                                OutlinedButton(
-                                    onClick = { houvAbastecimento = false },
-                                    enabled = !diarioFechado,
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = if (houvAbastecimento == false)
-                                            MaterialTheme.colorScheme.primaryContainer
-                                        else Color.Transparent
-                                    )
-                                ) { Text("Não") }
-                            }
-
-                            AnimatedVisibility(visible = houvAbastecimento == true) {
-                                Column {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Card(modifier = Modifier.fillMaxWidth()) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Box {
-                                                OutlinedButton(
-                                                    onClick = {
-                                                        menuVeiculoAbastecimentoExpandido = true
-                                                    },
-                                                    enabled = !diarioFechado,
-                                                    modifier = Modifier.fillMaxWidth()
-                                                ) {
-                                                    Text(
-                                                        if (veiculoAbastecimentoSelecionado.isBlank()) "Selecionar veículo"
-                                                        else veiculoAbastecimentoSelecionado
-                                                    )
-                                                }
-                                                DropdownMenu(
-                                                    expanded = menuVeiculoAbastecimentoExpandido,
-                                                    onDismissRequest = {
-                                                        menuVeiculoAbastecimentoExpandido = false
-                                                    }
-                                                ) {
-                                                    veiculosDisponiveisEtapa3.forEach { v ->
-                                                        DropdownMenuItem(
-                                                            text = { Text(v) },
-                                                            onClick = {
-                                                                veiculoAbastecimentoSelecionado = v
-                                                                menuVeiculoAbastecimentoExpandido =
-                                                                    false
-                                                            }
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(8.dp))
-
-                                        OutlinedTextField(
-                                            value = litrosAbastecimento,
-                                            onValueChange = { litrosAbastecimento = it },
-                                            label = { Text("Litros") },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                            enabled = !diarioFechado,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-
-                                        Spacer(modifier = Modifier.height(8.dp))
-
-                                        OutlinedButton(
-                                            onClick = {
-                                                if (ContextCompat.checkSelfPermission(
-                                                        context, Manifest.permission.CAMERA
-                                                    ) == PackageManager.PERMISSION_GRANTED
-                                                ) {
-                                                    val novaUri = criarUriParaFotoEtapa(context)
-                                                    fotoAbastecimentoUri = novaUri
-                                                    abastecimentoCameraLauncher.launch(novaUri)
-                                                } else {
-                                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                                                }
-                                            },
-                                            enabled = !diarioFechado,
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text(if (fotoAbastecimentoUri == null) "Foto do ticket" else "Ticket capturado")
-                                        }
-
-                                        if (fotoAbastecimentoUri != null) {
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            AsyncImage(
-                                                model = fotoAbastecimentoUri?.let { "${it}#${versaoPreviewAbastecimento}" },
-                                                contentDescription = "Miniatura ticket abastecimento",
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(120.dp)
-                                            )
-                                        }
-
-                                        Spacer(modifier = Modifier.height(12.dp))
-
-                                        Button(
-                                            onClick = {
-                                                val litros = litrosAbastecimento.toDoubleOrNull() ?: 0.0
-                                                val hora = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                                                viewModel.salvarAbastecimento(
-                                                    diarioId,
-                                                    veiculoAbastecimentoSelecionado,
-                                                    litros,
-                                                    fotoAbastecimentoUri?.toString() ?: "",
-                                                    hora
-                                                )
-                                                veiculoAbastecimentoSelecionado = ""
-                                                litrosAbastecimento = ""
-                                                fotoAbastecimentoUri = null
-                                            },
-                                            enabled = !diarioFechado &&
-                                                    veiculoAbastecimentoSelecionado.isNotBlank() &&
-                                                    litrosAbastecimento.isNotBlank(),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text("Salvar abastecimento")
-                                        }
-                                    }
-                                }
-                            }
-                            if (abastecimentos.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text("Abastecimentos registrados", style = MaterialTheme.typography.titleSmall)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                val expandidosAbastecimento = remember(diarioId) { mutableStateMapOf<Long, Boolean>() }
-
-                                abastecimentos.forEach { item ->
-                                    val expandido = expandidosAbastecimento[item.id] ?: false
-                                    Card(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                expandidosAbastecimento[item.id] = !expandido
-                                            },
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column {
-                                                    Text(item.veiculo, style = MaterialTheme.typography.bodyMedium)
-                                                    Text("${item.litros} L · ${item.horario.orEmpty()}", style = MaterialTheme.typography.bodySmall)
-                                                }
-                                                if (!diarioFechado) {
-                                                    IconButton(onClick = { viewModel.excluirAbastecimento(item) }) {
-                                                        Icon(Icons.Default.Delete, contentDescription = "Excluir")
-                                                    }
-                                                }
-                                            }
-                                            if (expandido && item.fotoTicketUri.isNotBlank()) {
-                                                Spacer(modifier = Modifier.height(8.dp))
-                                                AsyncImage(
-                                                    model = item.fotoTicketUri,
-                                                    contentDescription = "Foto ticket abastecimento",
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(180.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Spacer(modifier = Modifier.height(16.dp))
 
                             Text("Início do carregamento", style = MaterialTheme.typography.titleSmall)
                             Spacer(modifier = Modifier.height(8.dp))
@@ -1641,41 +1277,6 @@ fun DiarioEtapasScreen(
                                 Text("Adicionar serviço")
                             }
 
-                            if (servicoPendenteExclusao != null) {
-                                AlertDialog(
-                                    onDismissRequest = {
-                                        servicoPendenteExclusao = null
-                                    },
-                                    title = {
-                                        Text("Excluir serviço")
-                                    },
-                                    text = {
-                                        Text("Tem certeza que deseja apagar este serviço?")
-                                    },
-                                    confirmButton = {
-                                        TextButton(
-                                            onClick = {
-                                                servicoPendenteExclusao?.let { servico ->
-                                                    viewModel.excluirServico(servico)
-                                                }
-                                                servicoSelecionadoParaExcluir = null
-                                                servicoPendenteExclusao = null
-                                            }
-                                        ) {
-                                            Text("Apagar")
-                                        }
-                                    },
-                                    dismissButton = {
-                                        TextButton(
-                                            onClick = {
-                                                servicoPendenteExclusao = null
-                                            }
-                                        ) {
-                                            Text("Cancelar")
-                                        }
-                                    }
-                                )
-                            }
                         }
                     }
                 )
@@ -1771,41 +1372,17 @@ fun DiarioEtapasScreen(
                                 )
                             }
 
-                            if (mostrarDialogoEncerrarServicos) {
-                                AlertDialog(
-                                    onDismissRequest = {
-                                        mostrarDialogoEncerrarServicos = false
-                                    },
-                                    title = {
-                                        Text("Encerrar serviços")
-                                    },
-                                    text = {
-                                        Text("Após o fechamento dos serviços, não serão permitidos novos lançamentos nem alterações nos serviços já registrados. Será permitida apenas a consulta. Deseja continuar?")
-                                    },
-                                    confirmButton = {
-                                        TextButton(
-                                            onClick = {
-                                                viewModel.encerrarServicos(
-                                                    diarioId = diarioId,
-                                                    proximoDestino = proximoDestinoSelecionado
-                                                )
-                                                mostrarDialogoEncerrarServicos = false
-                                            }
-                                        ) {
-                                            Text("Encerrar")
-                                        }
-                                    },
-                                    dismissButton = {
-                                        TextButton(
-                                            onClick = {
-                                                mostrarDialogoEncerrarServicos = false
-                                            }
-                                        ) {
-                                            Text("Cancelar")
-                                        }
-                                    }
-                                )
-                            }
+                            EncerrarServicosDialog(
+                                show = mostrarDialogoEncerrarServicos,
+                                onConfirm = {
+                                    viewModel.encerrarServicos(
+                                        diarioId = diarioId,
+                                        proximoDestino = proximoDestinoSelecionado
+                                    )
+                                    mostrarDialogoEncerrarServicos = false
+                                },
+                                onDismiss = { mostrarDialogoEncerrarServicos = false }
+                            )
                         }
                     }
                 )
@@ -2090,7 +1667,7 @@ fun DiarioEtapasScreen(
                 DesviosCard(
                     quantidadeDesvios = desvios.size,
                     desvios = desvios,
-                    tiposDesvio = tiposDesvio,
+                    tiposDesvio = TIPOS_DESVIO,
                     diarioId = diarioId,
                     viewModel = viewModel,
                     bloqueado = diario?.diarioFechado == true || diario?.statusFechamentoDo == StatusEtapa.CONCLUIDA,
@@ -2238,800 +1815,26 @@ fun DiarioEtapasScreen(
                 )
             }
 
-            if (mostrarTicketAmpliado && fotoTicketEtapa3Uri != null) {
-                Dialog(
-                    onDismissRequest = { mostrarTicketAmpliado = false }
-                ) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp)
-                        ) {
-                            AsyncImage(
-                                model = fotoTicketEtapa3Uri?.let { "${it}#${versaoPreviewTicket}" },
-                                contentDescription = "Ticket ampliado",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(500.dp)
-                            )
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Button(
-                                onClick = { mostrarTicketAmpliado = false },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Fechar")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (uploadEstado is UploadEstado.Enviando) {
-        AlertDialog(
-            onDismissRequest = {},
-            confirmButton = {},
-            title = { Text("Enviando ao Firebase...") },
-            text = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            }
-        )
-    }
-
-    if (servicoPendenteExclusao != null) {
-        AlertDialog(
-            onDismissRequest = {
-                servicoPendenteExclusao = null
-            },
-            title = {
-                Text("Excluir serviço")
-            },
-            text = {
-                Text("Tem certeza que deseja apagar este serviço?")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        servicoPendenteExclusao?.let { servico ->
-                            viewModel.excluirServico(servico)
-                        }
-                        servicoSelecionadoParaExcluir = null
-                        servicoPendenteExclusao = null
-                    }
-                ) {
-                    Text("Apagar")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        servicoPendenteExclusao = null
-                    }
-                ) {
-                    Text("Cancelar")
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun EtapaCard(
-    numero: Int,
-    titulo: String,
-    status: StatusEtapa,
-    expandida: Boolean,
-    onClick: () -> Unit,
-    conteudo: (@Composable () -> Unit)? = null
-) {
-    val corFundo = when (status) {
-        StatusEtapa.CONCLUIDA -> Color(0xFFDFF5E1)
-        StatusEtapa.EM_ANDAMENTO -> Color(0xFFFFF4CC)
-        StatusEtapa.DISPONIVEL -> Color(0xFFEAF2FF)
-        StatusEtapa.BLOQUEADA -> Color(0xFFF2F2F2)
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 12.dp)
-            .clickable(enabled = status != StatusEtapa.BLOQUEADA) { onClick() },
-        colors = CardDefaults.cardColors(containerColor = corFundo)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Text(
-                text = "$numero. $titulo",
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "Status: $status",
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            if (expandida) {
-                Spacer(modifier = Modifier.height(12.dp))
-                if (conteudo != null) {
-                    conteudo()
-                } else {
-                    Text(
-                        text = "Conteúdo da etapa virá aqui.",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-        }
-    }
-}
-
-
-@Composable
-fun DesviosCard(
-    quantidadeDesvios: Int,
-    desvios: List<DesvioItemEntity>,
-    tiposDesvio: List<Pair<String, String>>,
-    diarioId: Long,
-    viewModel: MainViewModel,
-    bloqueado: Boolean,
-    expandido: Boolean,
-    onClick: () -> Unit,
-    onEditarObservacao: (DesvioItemEntity) -> Unit
-) {
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-
-    var menuTipoDesvioExpandido by remember { mutableStateOf(false) }
-    var codigoEmCadastro by remember { mutableStateOf("") }
-    var descricaoEmCadastro by remember { mutableStateOf("") }
-    var inicioEmCadastro by remember { mutableStateOf("") }
-    var fimEmCadastro by remember { mutableStateOf("") }
-    var observacaoEmCadastro by remember { mutableStateOf("") }
-    var desvioExpandidoId by remember { mutableStateOf<Long?>(null) }
-    var litrosDesvioAb by remember { mutableStateOf("") }
-    var fotoTicketDesvioAbUri by remember { mutableStateOf<Uri?>(null) }
-    var versaoPreviewDesvioAb by remember { mutableStateOf(0) }
-    var latitudeDesvioAb by remember { mutableStateOf(0.0) }
-    var longitudeDesvioAb by remember { mutableStateOf(0.0) }
-
-    var seletorHoraAberto by remember { mutableStateOf(false) }
-    var seletorHoraInicialHora by remember { mutableStateOf(8) }
-    var seletorHoraInicialMinuto by remember { mutableStateOf(0) }
-    var seletorHoraCallback by remember { mutableStateOf<((String) -> Unit)?>(null) }
-
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            val novaUri = criarUriParaFotoEtapa(context)
-            fotoTicketDesvioAbUri = novaUri
-        }
-    }
-
-    val desvioAbCameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { sucesso ->
-        if (sucesso) {
-            versaoPreviewDesvioAb++
-            fotoTicketDesvioAbUri?.let { uri ->
-                coroutineScope.launch {
-                    comprimirFoto(context, uri)
-                    salvarFotoNaGaleria(context, uri)
-                }
-            }
-            coroutineScope.launch {
-                try {
-                    val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
-                    val cts = CancellationTokenSource()
-                    val loc = withTimeoutOrNull(5_000L) {
-                        runCatching {
-                            fusedLocationClient.getCurrentLocation(
-                                Priority.PRIORITY_HIGH_ACCURACY, cts.token
-                            ).await()
-                        }.getOrNull()
-                    }
-                    if (loc != null) {
-                        latitudeDesvioAb = loc.latitude
-                        longitudeDesvioAb = loc.longitude
-                    }
-                } catch (e: Exception) {
-                    // GPS não disponível
-                }
-            }
-        }
-    }
-
-    fun abrirSeletorHora(valorAtual: String, onHoraSelecionada: (String) -> Unit) {
-        val partes = valorAtual.split(":")
-        seletorHoraInicialHora = partes.getOrNull(0)?.toIntOrNull() ?: 8
-        seletorHoraInicialMinuto = partes.getOrNull(1)?.toIntOrNull() ?: 0
-        seletorHoraCallback = onHoraSelecionada
-        seletorHoraAberto = true
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor =
-                if (quantidadeDesvios > 0) {
-                    Color(0xFFFFE8C2)
-                } else {
-                    MaterialTheme.colorScheme.surface
-                }
-        )
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onClick() }
-            ) {
-                Text(
-                    text = "Desvios",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    if (quantidadeDesvios == 0) "Nenhum desvio registrado."
-                    else "Desvios registrados: $quantidadeDesvios"
+            fotoTicketEtapa3Uri?.let { uri ->
+                TicketAmpliadoDialog(
+                    show = mostrarTicketAmpliado,
+                    uri = uri,
+                    versao = versaoPreviewTicket,
+                    onDismiss = { mostrarTicketAmpliado = false }
                 )
             }
-
-            if (expandido) {
-                Spacer(modifier = Modifier.height(12.dp))
-
-                desvios.forEach { desvio ->
-                    key(desvio.id) {
-                        val estaExpandido = desvioExpandidoId == desvio.id
-                        val corCard = when {
-                            desvio.inicio.isBlank() -> Color(0xFFF1F1F1)
-                            desvio.fim.isBlank() -> Color(0xFFFFE8C2)
-                            else -> Color(0xFFDDF5DD)
-                        }
-                        var inicioEditado by remember(desvio.id, desvio.inicio) {
-                            mutableStateOf(desvio.inicio)
-                        }
-                        var fimEditado by remember(desvio.id, desvio.fim) {
-                            mutableStateOf(desvio.fim)
-                        }
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp),
-                            colors = CardDefaults.cardColors(containerColor = corCard)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            desvioExpandidoId = if (estaExpandido) null else desvio.id
-                                        }
-                                ) {
-                                    Text(
-                                        text = "${desvio.codigo} - ${desvio.descricao}",
-                                        style = MaterialTheme.typography.titleSmall
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Horário: ${
-                                            when {
-                                                desvio.inicio.isNotBlank() && desvio.fim.isNotBlank() ->
-                                                    "${desvio.inicio} às ${desvio.fim}"
-                                                desvio.inicio.isNotBlank() ->
-                                                    "Início ${desvio.inicio}"
-                                                else -> "Não iniciado"
-                                            }
-                                        }",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                    if (desvio.observacao.isNotBlank()) {
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = "Obs.: ${desvio.observacao}",
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                    }
-                                }
-
-                                if (estaExpandido) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Text("Início: ${inicioEditado.ifBlank { "--:--" }}")
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Button(
-                                            onClick = { inicioEditado = horaAtualFormatada() },
-                                            enabled = !bloqueado,
-                                            modifier = Modifier.weight(1f)
-                                        ) { Text("Marcar início") }
-                                        OutlinedButton(
-                                            onClick = {
-                                                abrirSeletorHora(inicioEditado) { hora ->
-                                                    inicioEditado = hora
-                                                }
-                                            },
-                                            enabled = !bloqueado,
-                                            modifier = Modifier.weight(1f)
-                                        ) { Text("Editar início") }
-                                    }
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Text("Fim: ${fimEditado.ifBlank { "--:--" }}")
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Button(
-                                            onClick = { fimEditado = horaAtualFormatada() },
-                                            enabled = !bloqueado,
-                                            modifier = Modifier.weight(1f)
-                                        ) { Text("Marcar fim") }
-                                        OutlinedButton(
-                                            onClick = {
-                                                abrirSeletorHora(fimEditado) { hora ->
-                                                    fimEditado = hora
-                                                }
-                                            },
-                                            enabled = !bloqueado,
-                                            modifier = Modifier.weight(1f)
-                                        ) { Text("Editar fim") }
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = "Observação: ${desvio.observacao.ifBlank { "Nenhuma observação" }}",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    OutlinedButton(
-                                        onClick = { onEditarObservacao(desvio) },
-                                        enabled = !bloqueado,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) { Text("Editar observação") }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Button(
-                                        onClick = {
-                                            viewModel.atualizarHorarioDesvio(
-                                                item = desvio,
-                                                novoInicio = inicioEditado,
-                                                novoFim = fimEditado
-                                            )
-                                            desvioExpandidoId = null
-                                        },
-                                        enabled = !bloqueado,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) { Text("Salvar horários") }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Button(
-                    onClick = { menuTipoDesvioExpandido = !menuTipoDesvioExpandido },
-                    enabled = !bloqueado && codigoEmCadastro.isBlank(),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(if (menuTipoDesvioExpandido) "Cancelar" else "Adicionar desvio")
-                }
-
-                DropdownMenu(
-                    expanded = menuTipoDesvioExpandido,
-                    onDismissRequest = { menuTipoDesvioExpandido = false },
-                    properties = PopupProperties(focusable = false)
-                ) {
-                    tiposDesvio.forEach { item ->
-                        val codigo = item.first
-                        val descricao = item.second
-                        DropdownMenuItem(
-                            text = { Text("$codigo - $descricao") },
-                            onClick = {
-                                codigoEmCadastro = codigo
-                                descricaoEmCadastro = descricao
-                                inicioEmCadastro = ""
-                                fimEmCadastro = ""
-                                observacaoEmCadastro = ""
-                                litrosDesvioAb = ""
-                                fotoTicketDesvioAbUri = null
-                                latitudeDesvioAb = 0.0
-                                longitudeDesvioAb = 0.0
-                                menuTipoDesvioExpandido = false
-                            }
-                        )
-                    }
-                }
-
-                if (codigoEmCadastro.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = "$codigoEmCadastro - $descricaoEmCadastro",
-                                style = MaterialTheme.typography.titleSmall
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text("Início: ${inicioEmCadastro.ifBlank { "--:--" }}")
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = { inicioEmCadastro = horaAtualFormatada() },
-                                    enabled = !bloqueado,
-                                    modifier = Modifier.weight(1f)
-                                ) { Text("Marcar início") }
-                                OutlinedButton(
-                                    onClick = {
-                                        abrirSeletorHora(inicioEmCadastro) { hora ->
-                                            inicioEmCadastro = hora
-                                        }
-                                    },
-                                    enabled = !bloqueado,
-                                    modifier = Modifier.weight(1f)
-                                ) { Text("Editar início") }
-                            }
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text("Fim: ${fimEmCadastro.ifBlank { "--:--" }}")
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = { fimEmCadastro = horaAtualFormatada() },
-                                    enabled = !bloqueado,
-                                    modifier = Modifier.weight(1f)
-                                ) { Text("Marcar fim") }
-                                OutlinedButton(
-                                    onClick = {
-                                        abrirSeletorHora(fimEmCadastro) { hora ->
-                                            fimEmCadastro = hora
-                                        }
-                                    },
-                                    enabled = !bloqueado,
-                                    modifier = Modifier.weight(1f)
-                                ) { Text("Editar fim") }
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = observacaoEmCadastro,
-                                onValueChange = { observacaoEmCadastro = it },
-                                label = { Text("Observação (opcional)") },
-                                enabled = !bloqueado,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            // Campos extras apenas para desvio AB
-                            if (codigoEmCadastro == "AB") {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedTextField(
-                                    value = litrosDesvioAb,
-                                    onValueChange = { litrosDesvioAb = it },
-                                    label = { Text("Litros abastecidos") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                    enabled = !bloqueado,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedButton(
-                                    onClick = {
-                                        if (ContextCompat.checkSelfPermission(
-                                                context, Manifest.permission.CAMERA
-                                            ) == PackageManager.PERMISSION_GRANTED
-                                        ) {
-                                            val novaUri = criarUriParaFotoEtapa(context)
-                                            fotoTicketDesvioAbUri = novaUri
-                                            desvioAbCameraLauncher.launch(novaUri)
-                                        } else {
-                                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                                        }
-                                    },
-                                    enabled = !bloqueado,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(if (fotoTicketDesvioAbUri == null) "Foto do ticket" else "Ticket capturado ✓")
-                                }
-                                if (fotoTicketDesvioAbUri != null) {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    AsyncImage(
-                                        model = fotoTicketDesvioAbUri?.let { "${it}#${versaoPreviewDesvioAb}" },
-                                        contentDescription = "Foto ticket abastecimento desvio",
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(120.dp)
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Button(
-                                onClick = {
-                                    val litros = if (codigoEmCadastro == "AB")
-                                        litrosDesvioAb.toDoubleOrNull() ?: 0.0
-                                    else 0.0
-                                    val fotoUri = if (codigoEmCadastro == "AB")
-                                        fotoTicketDesvioAbUri?.toString() ?: ""
-                                    else ""
-
-                                    viewModel.adicionarDesvioCompleto(
-                                        diarioId = diarioId,
-                                        codigo = codigoEmCadastro,
-                                        descricao = descricaoEmCadastro,
-                                        inicio = inicioEmCadastro,
-                                        fim = fimEmCadastro,
-                                        observacao = observacaoEmCadastro,
-                                        litros = litros,
-                                        fotoTicketUri = fotoUri,
-                                        latitude = latitudeDesvioAb,
-                                        longitude = longitudeDesvioAb
-                                    )
-
-                                    codigoEmCadastro = ""
-                                    descricaoEmCadastro = ""
-                                    inicioEmCadastro = ""
-                                    fimEmCadastro = ""
-                                    observacaoEmCadastro = ""
-                                    litrosDesvioAb = ""
-                                    fotoTicketDesvioAbUri = null
-                                    latitudeDesvioAb = 0.0
-                                    longitudeDesvioAb = 0.0
-                                },
-                                enabled = !bloqueado &&
-                                        inicioEmCadastro.isNotBlank() &&
-                                        fimEmCadastro.isNotBlank() &&
-                                        (codigoEmCadastro != "AB" || litrosDesvioAb.isNotBlank()),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Confirmar desvio")
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedButton(
-                                onClick = {
-                                    codigoEmCadastro = ""
-                                    descricaoEmCadastro = ""
-                                    inicioEmCadastro = ""
-                                    fimEmCadastro = ""
-                                    observacaoEmCadastro = ""
-                                    litrosDesvioAb = ""
-                                    fotoTicketDesvioAbUri = null
-                                    latitudeDesvioAb = 0.0
-                                    longitudeDesvioAb = 0.0
-                                },
-                                enabled = !bloqueado,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Cancelar")
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
-    if (seletorHoraAberto) {
-        TimePickerDialogCompose(
-            initialHour = seletorHoraInicialHora,
-            initialMinute = seletorHoraInicialMinuto,
-            onConfirm = { hora ->
-                seletorHoraCallback?.invoke(hora)
-                seletorHoraAberto = false
-                seletorHoraCallback = null
-            },
-            onDismiss = {
-                seletorHoraAberto = false
-                seletorHoraCallback = null
-            }
-        )
-    }
-}
+    EnviandoFirebaseDialog(show = uploadEstado is UploadEstado.Enviando)
 
-private val LISTA_FUNCIONARIOS = listOf(
-    "Natanael",
-    "Ronaldo",
-    "Elio",
-    "Roger",
-    "Sergio",
-    "Edson S.",
-    "Paulo S.",
-    "Abraham",
-    "Diego Angel",
-    "Armando",
-    "Edilasaro",
-    "Paulo H.",
-    "Valdir R.",
-    "Juliano",
-    "Francisco",
-    "Salvio",
-    "Adinael",
-    "Anthony",
-    "Willian",
-    "Joneci",
-    "Marciano",
-    "Angelo",
-    "Jacó",
-    "David",
-    "Valdir",
-    "Sadi",
-    "Luiz C.",
-    "Rhuan",
-    "Aldair",
-    "José",
-    "João Pedro",
-    "Valdeci",
-    "Valdemar",
-    "Gardin",
-    "Nicolau",
-    "Edilson",
-    "Diego Alexandre"
-)
-
-private val LISTA_VEICULOS = listOf(
-    "Térmico - ATA-8E06",
-    "Térmico - QHQ-3G94",
-    "Térmico - QHL-4B64",
-    "Térmico - QIZ-5I82",
-    "Térmico - RXZ-5I74",
-    "Caçamba - AIJ-0K66",
-    "Caçamba - MJI-8G32",
-    "Caçamba - LYF-4330",
-    "Térmico - SXL-3G10",
-    "Prancha - IOX-7B63",
-    "Caçamba - MIX-8A53",
-    "Prancha - MBK-9080"
-)
-
-private val LISTA_EQUIPAMENTOS_AUXILIARES = listOf(
-    "Sapo Mecânico",
-    "Compressor",
-    "Policorte",
-    "Gerador",
-    "Placa Vibratória",
-    "Rompedor",
-    "Vassoura Mecânica"
-)
-
-private val LISTA_EQUIPAMENTOS_COMPACTACAO = listOf(
-    "Placa Vibratória",
-    "Rolo Compactador"
-)
-
-private val LISTA_LIMPEZA_ENTULHO = listOf(
-    "Já limpo",
-    "Carregado",
-    "Em espera"
-)
-
-private fun criarUriParaFotoEtapa(context: Context): Uri {
-    val arquivo = File(
-        context.cacheDir,
-        "foto_${UUID.randomUUID()}.jpg"
-    )
-    return FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        arquivo
-    )
-}
-
-@Composable
-private fun CamposQuantidadeEtapa3(
-    veiculos: List<String>,
-    quantidades: SnapshotStateList<String>,
-    bloqueado: Boolean = false
-) {
-    Column {
-        veiculos.forEachIndexed { index, veiculo ->
-            Text(
-                text = veiculo,
-                style = MaterialTheme.typography.titleSmall
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            OutlinedTextField(
-                value = quantidades.getOrNull(index).orEmpty(),
-                onValueChange = { novoValor ->
-                    val filtrado = filtrarEntradaDecimal(novoValor)
-                    if (filtrado != null && index in quantidades.indices) {
-                        quantidades[index] = filtrado
-                    }
-                },
-                enabled = !bloqueado,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Quantidade em ton") },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal
-                ),
-                singleLine = true
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-    }
-}
-
-private fun filtrarEntradaDecimal(valor: String): String? {
-    if (valor.isEmpty()) return ""
-
-    if (!valor.all { it.isDigit() || it == ',' || it == '.' }) return null
-
-    val separadores = valor.count { it == ',' || it == '.' }
-    if (separadores > 1) return null
-
-    return valor
-}
-
-private fun formatarDecimalTruncado(valor: Double): String {
-    val truncado = kotlin.math.floor(valor * 100.0) / 100.0
-    return String.format(Locale.US, "%.2f", truncado).replace(".", ",")
-}
-
-private fun horaAtualFormatada(): String {
-    return java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-        .format(java.util.Date())
-}
-
-private fun criarUriParaFotoDiario(context: Context): Uri {
-    val imagesDir = File(context.cacheDir, "images").apply { mkdirs() }
-    val arquivo = File(imagesDir, "foto_diario_${System.currentTimeMillis()}.jpg")
-
-    return androidx.core.content.FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        arquivo
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TimePickerDialogCompose(
-    initialHour: Int,
-    initialMinute: Int,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val state = rememberTimePickerState(
-        initialHour = initialHour,
-        initialMinute = initialMinute,
-        is24Hour = true
-    )
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Selecionar hora") },
-        text = { TimePicker(state = state) },
-        confirmButton = {
-            TextButton(onClick = { onConfirm("%02d:%02d".format(state.hour, state.minute)) }) {
-                Text("OK")
-            }
+    ExcluirServicoDialog(
+        servico = servicoPendenteExclusao,
+        onConfirm = { servico ->
+            viewModel.excluirServico(servico)
+            servicoSelecionadoParaExcluir = null
+            servicoPendenteExclusao = null
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancelar")
-            }
-        }
+        onDismiss = { servicoPendenteExclusao = null }
     )
 }

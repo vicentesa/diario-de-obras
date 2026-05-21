@@ -1,4 +1,4 @@
-package com.example.diarioobras.ui
+﻿package com.example.diarioobras.ui
 
 import android.Manifest
 import android.app.DatePickerDialog
@@ -83,7 +83,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -102,6 +105,7 @@ fun ObrasScreen(
     var prazoContratoDias by remember { mutableStateOf("") }
     var espessuraContratoCm by remember { mutableStateOf("") }
     var mostrarCadastro by remember { mutableStateOf(false) }
+    var obraEditando by remember { mutableStateOf<com.example.diarioobras.data.ObraEntity?>(null) }
 
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
@@ -152,33 +156,54 @@ fun ObrasScreen(
                         onClick = { onAbrirObra(obra.id) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(obra.nome, style = MaterialTheme.typography.titleMedium)
-                            if (obra.local.isNotBlank()) {
-                                Text(buildAnnotatedString {
-                                    withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
-                                        append("Local: ")
-                                    }
-                                    append(obra.local)
-                                })
-                            }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp).weight(1f)) {
+                                Text(obra.nome, style = MaterialTheme.typography.titleMedium)
+                                if (obra.local.isNotBlank()) {
+                                    Text(buildAnnotatedString {
+                                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                                            append("Local: ")
+                                        }
+                                        append(obra.local)
+                                    })
+                                }
 
-                            if (obra.contratante.isNotBlank()) {
-                                Text(buildAnnotatedString {
-                                    withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
-                                        append("Contratante: ")
-                                    }
-                                    append(obra.contratante)
-                                })
-                            }
+                                if (obra.contratante.isNotBlank()) {
+                                    Text(buildAnnotatedString {
+                                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                                            append("Contratante: ")
+                                        }
+                                        append(obra.contratante)
+                                    })
+                                }
 
-                            if (obra.contrato.isNotBlank()) {
-                                Text(buildAnnotatedString {
-                                    withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
-                                        append("Contrato: ")
-                                    }
-                                    append(obra.contrato)
-                                })
+                                if (obra.contrato.isNotBlank()) {
+                                    Text(buildAnnotatedString {
+                                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                                            append("Contrato: ")
+                                        }
+                                        append(obra.contrato)
+                                    })
+                                }
+                            }
+                            IconButton(
+                                onClick = {
+                                    obraEditando = obra
+                                    nome = obra.nome
+                                    local = obra.local
+                                    contratante = obra.contratante
+                                    contrato = obra.contrato
+                                    dataInicioContrato = obra.dataInicioContrato
+                                    prazoContratoDias = obra.prazoContratoDias.toString().takeIf { it != "0" }.orEmpty()
+                                    espessuraContratoCm = if (obra.espessuraContratoCm != 0.0) obra.espessuraContratoCm.toString() else ""
+                                    mostrarCadastro = true
+                                }
+                            ) {
+                                Icon(Icons.Default.Edit, contentDescription = "Editar contrato")
                             }
                         }
                     }
@@ -187,7 +212,10 @@ fun ObrasScreen(
 
             if (mostrarCadastro) {
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Cadastrar novo contrato", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (obraEditando != null) "Editar contrato" else "Cadastrar novo contrato",
+                    style = MaterialTheme.typography.titleMedium
+                )
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
@@ -294,16 +322,30 @@ fun ObrasScreen(
 
                 Button(
                     onClick = {
-                        viewModel.adicionarObra(
-                            nome = nome,
-                            local = local,
-                            contratante = contratante,
-                            contrato = contrato,
-                            dataInicioContrato = dataInicioContrato,
-                            prazoContratoDias = prazoContratoDias.toIntOrNull() ?: 0,
-                            espessuraContratoCm = espessuraContratoCm
-                                .replace(',', '.').toDoubleOrNull() ?: 0.0
-                        )
+                        val editando = obraEditando
+                        if (editando != null) {
+                            viewModel.atualizarObra(
+                                editando.copy(
+                                    nome = nome,
+                                    local = local,
+                                    contratante = contratante,
+                                    contrato = contrato,
+                                    dataInicioContrato = dataInicioContrato,
+                                    prazoContratoDias = prazoContratoDias.toIntOrNull() ?: 0,
+                                    espessuraContratoCm = espessuraContratoCm.replace(',', '.').toDoubleOrNull() ?: 0.0
+                                )
+                            )
+                        } else {
+                            viewModel.adicionarObra(
+                                nome = nome,
+                                local = local,
+                                contratante = contratante,
+                                contrato = contrato,
+                                dataInicioContrato = dataInicioContrato,
+                                prazoContratoDias = prazoContratoDias.toIntOrNull() ?: 0,
+                                espessuraContratoCm = espessuraContratoCm.replace(',', '.').toDoubleOrNull() ?: 0.0
+                            )
+                        }
                         nome = ""
                         local = ""
                         contratante = ""
@@ -311,6 +353,7 @@ fun ObrasScreen(
                         dataInicioContrato = ""
                         prazoContratoDias = ""
                         espessuraContratoCm = ""
+                        obraEditando = null
                         mostrarCadastro = false
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -1897,72 +1940,6 @@ fun DesvioCard(
         }
     }
 }
-
-private val LISTA_FUNCIONARIOS = listOf(
-    "Natanael",
-    "Ronaldo",
-    "Elio",
-    "Roger",
-    "Sergio",
-    "Edson S.",
-    "Paulo S.",
-    "Abraham",
-    "Diego Angel",
-    "Armando",
-    "Edilasaro",
-    "Paulo H.",
-    "Valdir R.",
-    "Juliano",
-    "Francisco",
-    "Salvio",
-    "Adinael",
-    "Anthony",
-    "Willian",
-    "Joneci",
-    "Marciano",
-    "Angelo",
-    "Jacó",
-    "David",
-    "Valdir",
-    "Sadi",
-    "Luiz C.",
-    "Rhuan",
-    "Aldair",
-    "José",
-    "João Pedro",
-    "Valdeci",
-    "Valdemar",
-    "Gardin",
-    "Nicolau",
-    "Edilson",
-    "Diego Alexandre"
-)
-
-private val LISTA_VEICULOS = listOf(
-    "Térmico - ATA-8E06",
-    "Térmico - QHQ-3G94",
-    "Térmico - QHL-4B64",
-    "Térmico - QIZ-5I82",
-    "Térmico - RXZ-5I74",
-    "Caçamba - AIJ-0K66",
-    "Caçamba - MJI-8G32",
-    "Caçamba - LYF-4330",
-    "Térmico - SXL-3G10",
-    "Prancha - IOX-7B63",
-    "Caçamba - MIX-8A53",
-    "Prancha - MBK-9080"
-)
-
-private val LISTA_EQUIPAMENTOS_AUXILIARES = listOf(
-    "Sapo Mecânico",
-    "Compressor",
-    "Policorte",
-    "Gerador",
-    "Placa Vibratória",
-    "Rompedor",
-    "Vassoura Mecânica"
-)
-
 private fun criarUriParaFoto(context: Context): Uri {
     val imagesDir = File(context.cacheDir, "images").apply { mkdirs() }
     val imageFile = File(imagesDir, "servico_${System.currentTimeMillis()}.jpg")

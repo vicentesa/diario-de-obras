@@ -179,33 +179,30 @@ fun DiarioObrasApp() {
                 obraId = obraId,
                 viewModel = viewModel,
                 onAbrirDiario = { diarioId ->
-                    navController.navigate("diario/$diarioId/0")
+                    navController.navigate("diario/$diarioId")
                 }
             )
         }
 
         composable(
-            route = "diario/{diarioId}/{abaInicial}",
+            route = "diario/{diarioId}",
             arguments = listOf(
-                navArgument("diarioId") { type = NavType.LongType },
-                navArgument("abaInicial") { type = NavType.IntType }
+                navArgument("diarioId") { type = NavType.LongType }
             )
         ) { backStackEntry ->
 
             val diarioId = backStackEntry.arguments?.getLong("diarioId") ?: 0L
-            val abaInicial = backStackEntry.arguments?.getInt("abaInicial") ?: 0
 
             DiarioEtapasScreen(
                 diarioId = diarioId,
                 viewModel = viewModel,
                 navController = navController,
-                abaInicial = abaInicial,
                 onAbrirServico = { servicoId ->
                     navController.navigate("servico/$diarioId/$servicoId")
                 },
                 onAbrirDiario = { novoDiarioId ->
-                    navController.navigate("diario/$novoDiarioId/0") {
-                        popUpTo("diario/$diarioId/0") { inclusive = true }
+                    navController.navigate("diario/$novoDiarioId") {
+                        popUpTo("diario/$diarioId") { inclusive = true }
                         launchSingleTop = true
                     }
                 }
@@ -229,12 +226,6 @@ fun DiarioObrasApp() {
                 viewModel = viewModel,
                 onVoltar = {
                     navController.popBackStack()
-                },
-                onSalvarConcluir = {
-                    navController.navigate("diario/$diarioId/3") {
-                        popUpTo("diario/$diarioId/0") { inclusive = false }
-                        launchSingleTop = true
-                    }
                 }
             )
         }

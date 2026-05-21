@@ -233,7 +233,8 @@ data class ServicoEntity(
     val aberturaCava: String = "",
     val limpezaEntulho: String = "",
     val pinturaLigacao: Boolean = false,
-    val equipamentoCompactacaoUsado: String = ""
+    val equipamentoCompactacaoUsado: String = "",
+    val observacoes: String = ""
 )
 
 @Entity(

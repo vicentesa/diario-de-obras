@@ -121,6 +121,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun atualizarObra(obra: com.example.diarioobras.data.ObraEntity) {
+        viewModelScope.launch { repository.atualizarObra(obra) }
+    }
+
     fun criarNovoDiario(obraId: Long, onCriado: (Long) -> Unit, onJaExiste: (String) -> Unit) {
         viewModelScope.launch {
             val diarioId = repository.criarNovoDiario(obraId)
@@ -243,6 +247,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.atualizarObservacaoDesvio(id, texto) }
     }
 
+    fun atualizarFotoDesvio(id: Long, fotoUri: String) {
+        viewModelScope.launch { repository.atualizarFotoDesvio(id, fotoUri) }
+    }
+
     fun concluirFechamentoDo(
         diarioId: Long, observacaoFinalDo: String, horarioPontoCidade: String? = null
     ) {
@@ -260,6 +268,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 repository.marcarDiarioComoSincronizado(diarioId)
             } else {
                 _uploadEstado.value = UploadEstado.Erro(resultado.exceptionOrNull()?.message ?: "Erro ao enviar")
+                com.example.diarioobras.data.SyncScheduler.agendarUmaVez(getApplication())
             }
         }
     }
@@ -592,6 +601,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val jsonExport = repository.montarDiarioParaJson(diarioId)
             if (jsonExport == null) {
                 _uploadEstado.value = UploadEstado.Erro("Não foi possível montar o JSON do diário")
+                com.example.diarioobras.data.SyncScheduler.agendarUmaVez(getApplication())
                 return@launch
             }
             _uploadEstado.value = UploadEstado.Enviando
@@ -601,6 +611,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 repository.marcarDiarioComoSincronizado(diarioId)
             } else {
                 _uploadEstado.value = UploadEstado.Erro(resultado.exceptionOrNull()?.message ?: "Erro ao enviar")
+                com.example.diarioobras.data.SyncScheduler.agendarUmaVez(getApplication())
             }
         }
     }

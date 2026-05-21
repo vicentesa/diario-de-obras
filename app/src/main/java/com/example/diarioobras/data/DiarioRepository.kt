@@ -69,6 +69,8 @@ class DiarioRepository(
         )
     }
 
+    suspend fun atualizarObra(obra: ObraEntity) = dao.atualizarObra(obra)
+
     suspend fun excluirServico(servico: ServicoEntity) = dao.excluirServico(servico)
     suspend fun excluirCarregamento(item: CarregamentoItemEntity) = dao.excluirCarregamento(item)
     suspend fun atualizarServico(servico: ServicoEntity) = dao.atualizarServico(servico)
@@ -493,6 +495,8 @@ class DiarioRepository(
             dao.atualizarObservacaoDesvio(id, texto)
         }
     }
+
+    suspend fun atualizarFotoDesvio(id: Long, fotoUri: String) = dao.atualizarFotoDesvio(id, fotoUri)
 
     suspend fun concluirFechamentoDo(
         diarioId: Long, observacaoFinalDo: String, horarioPontoCidade: String? = null

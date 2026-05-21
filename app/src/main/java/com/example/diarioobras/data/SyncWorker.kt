@@ -10,11 +10,20 @@ class SyncWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        // Aqui entraremos depois com a lógica real de sincronização:
-        // 1. buscar registros pendentes no banco
-        // 2. enviar para API quando houver internet
-        // 3. marcar como sincronizado
+        val db = AppDatabase.getInstance(applicationContext)
+        val repository = DiarioRepository(db)
+        val uploadService = FirebaseUploadService()
 
+        val pendentes = db.obrasDao().listarDiariosPendentesSincronizacao()
+        for (diario in pendentes) {
+            val json = repository.montarDiarioParaJson(diario.id) ?: continue
+            val resultado = uploadService.enviarDiario(applicationContext, json)
+            if (resultado.isSuccess) {
+                repository.marcarDiarioComoSincronizado(diario.id)
+            } else {
+                return Result.retry()
+            }
+        }
         return Result.success()
     }
 }

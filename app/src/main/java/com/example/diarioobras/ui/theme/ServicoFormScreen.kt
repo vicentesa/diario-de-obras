@@ -1,4 +1,4 @@
-package com.example.diarioobras.ui.theme
+﻿package com.example.diarioobras.ui.theme
 
 import android.Manifest
 import android.content.Context
@@ -9,7 +9,9 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,12 +23,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -42,6 +49,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -61,6 +71,7 @@ import com.example.diarioobras.data.ServicoEntity
 import com.example.diarioobras.data.StatusEtapa
 import com.example.diarioobras.ui.MainViewModel
 import com.example.diarioobras.ui.comprimirFoto
+import com.example.diarioobras.ui.formatarDecimalTruncado
 import com.example.diarioobras.ui.salvarFotoNaGaleria
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -98,11 +109,6 @@ private fun normalizarDecimal(valor: String): String {
     return valor.replace(",", ".")
 }
 
-private fun formatarDecimalTruncado(valor: Double): String {
-    val truncado = kotlin.math.floor(valor * 100.0) / 100.0
-    return String.format(Locale.US, "%.2f", truncado).replace(".", ",")
-}
-
 private fun formatarCampoDecimal(valor: String): String {
     val numero = valor.replace(",", ".").toDoubleOrNull() ?: return valor
     return formatarDecimalTruncado(numero)
@@ -124,8 +130,7 @@ fun ServicoFormScreen(
     diarioId: Long,
     servicoId: Long,
     viewModel: MainViewModel,
-    onVoltar: () -> Unit,
-    onSalvarConcluir: () -> Unit
+    onVoltar: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -145,7 +150,9 @@ fun ServicoFormScreen(
 
     var ordemServico by remember { mutableStateOf("") }
     var numeroProtocolo by remember { mutableStateOf("") }
-    var enderecoServico by remember { mutableStateOf("") }
+    var nomeRuaServico by remember { mutableStateOf("") }
+    var numeroServico by remember { mutableStateOf("") }
+    var observacoes by remember { mutableStateOf("") }
 
     var aberturaCava by remember { mutableStateOf("") }
     var menuAberturaExpandido by remember { mutableStateOf(false) }
@@ -195,6 +202,9 @@ fun ServicoFormScreen(
 
     var fotoEmCaptura by remember { mutableStateOf("ANTES") }
 
+    val eraNovoServico = remember { servicoId == 0L }
+    var areaEditandoIndex by remember { mutableStateOf(-1) }
+
     val regexDecimal = Regex("^\\d*([.,]\\d*)?$")
     val areasCava = remember { mutableStateListOf<AreaCavaUi>() }
 
@@ -209,54 +219,30 @@ fun ServicoFormScreen(
                     1,
                     object : Geocoder.GeocodeListener {
                         override fun onGeocode(addresses: List<Address>) {
-                            val address = addresses.firstOrNull()
-                            val rua = address?.thoroughfare.orEmpty()
-                            val numero = address?.subThoroughfare.orEmpty()
-
-                            val resultado = if (rua.isNotBlank() || numero.isNotBlank()) {
-                                listOf(rua, numero)
-                                    .filter { it.isNotBlank() }
-                                    .joinToString(", ")
-                            } else {
-                                address?.getAddressLine(0).orEmpty()
-                            }
-
-                            if (resultado.isNotBlank()) {
-                                enderecoServico = resultado
-                            }
+                            val address = addresses.firstOrNull() ?: return
+                            val rua = address.thoroughfare.orEmpty()
+                            val numero = address.subThoroughfare.orEmpty()
+                            if (rua.isNotBlank()) nomeRuaServico = rua
+                            if (numero.isNotBlank()) numeroServico = numero
                         }
-
-                        override fun onError(errorMessage: String?) {
-                            android.util.Log.d("ServicoForm", "Erro no Geocoder: $errorMessage")
-                        }
+                        override fun onError(errorMessage: String?) {}
                     }
                 )
             } else {
                 CoroutineScope(Dispatchers.Main).launch {
                     val addresses = withContext(Dispatchers.IO) {
                         try {
+                            @Suppress("DEPRECATION")
                             geocoder.getFromLocation(latitude, longitude, 1)
                         } catch (e: Exception) {
-                            android.util.Log.d("ServicoForm", "Exceção no Geocoder: ${e.message}")
                             null
                         }
                     }
-
-                    val address = addresses?.firstOrNull()
-                    val rua = address?.thoroughfare.orEmpty()
-                    val numero = address?.subThoroughfare.orEmpty()
-
-                    val resultado = if (rua.isNotBlank() || numero.isNotBlank()) {
-                        listOf(rua, numero)
-                            .filter { it.isNotBlank() }
-                            .joinToString(", ")
-                    } else {
-                        address?.getAddressLine(0).orEmpty()
-                    }
-
-                    if (resultado.isNotBlank()) {
-                        enderecoServico = resultado
-                    }
+                    val address = addresses?.firstOrNull() ?: return@launch
+                    val rua = address.thoroughfare.orEmpty()
+                    val numero = address.subThoroughfare.orEmpty()
+                    if (rua.isNotBlank()) nomeRuaServico = rua
+                    if (numero.isNotBlank()) numeroServico = numero
                 }
             }
         } catch (e: Exception) {
@@ -264,14 +250,21 @@ fun ServicoFormScreen(
         }
     }
 
+    fun enderecoCompleto(): String {
+        val rua = nomeRuaServico.trim()
+        val num = numeroServico.trim()
+        return if (num.isBlank()) rua else if (rua.isBlank()) num else "$rua, $num"
+    }
+
     fun montarServicoEntity(id: Long): ServicoEntity {
+        val endereco = enderecoCompleto()
         return ServicoEntity(
             id = id,
             diarioId = diarioId,
             tipo = "Tapa buraco",
             ordemServico = ordemServico.toIntOrNull() ?: 0,
             numeroProtocolo = numeroProtocolo,
-            endereco = enderecoServico,
+            endereco = endereco,
             comprimento = areasCava.lastOrNull()?.comprimento ?: 0.0,
             largura = areasCava.lastOrNull()?.largura ?: 0.0,
             altura = (areasCava.lastOrNull()?.espessuraCm ?: 0.0) / 100.0,
@@ -279,7 +272,7 @@ fun ServicoFormScreen(
             fim = null,
             latitude = latitudeAtual,
             longitude = longitudeAtual,
-            nomeRua = enderecoServico.ifBlank { null },
+            nomeRua = nomeRuaServico.ifBlank { null },
             fotoUri = fotoAntesUri?.toString(),
             horarioFotoAntes = horarioFotoAntes,
             fotoCavaAbertaUri = fotoCavaAbertaUri?.toString(),
@@ -290,7 +283,8 @@ fun ServicoFormScreen(
             aberturaCava = aberturaCava,
             limpezaEntulho = limpezaEntulho,
             pinturaLigacao = pinturaLigacao,
-            equipamentoCompactacaoUsado = equipamentoCompactacaoSelecionado
+            equipamentoCompactacaoUsado = equipamentoCompactacaoSelecionado,
+            observacoes = observacoes
         )
     }
 
@@ -427,7 +421,11 @@ fun ServicoFormScreen(
                 servicoIdAtual = servico.id
                 ordemServico = servico.ordemServico.toString().takeIf { it != "0" }.orEmpty()
                 numeroProtocolo = servico.numeroProtocolo
-                enderecoServico = servico.endereco
+                nomeRuaServico = servico.nomeRua?.takeIf { it.isNotBlank() } ?: servico.endereco
+                numeroServico = if (servico.nomeRua != null && servico.endereco.startsWith(servico.nomeRua)) {
+                    servico.endereco.substringAfter("${servico.nomeRua}, ", "")
+                } else ""
+                observacoes = servico.observacoes
 
                 fotoAntesUri = servico.fotoUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
                 horarioFotoAntes = servico.horarioFotoAntes
@@ -466,9 +464,16 @@ fun ServicoFormScreen(
         } else {
             val servicosExistentes = viewModel.buscarDiarioCompleto(diarioId)?.servicos.orEmpty()
             val proximo = (servicosExistentes.maxOfOrNull { it.ordemServico } ?: 0) + 1
-
-            numeroProtocolo = proximo.toString()
             ordemServico = proximo.toString()
+            numeroProtocolo = proximo.toString()
+
+            val rascunho = ServicoEntity(
+                diarioId = diarioId,
+                ordemServico = proximo,
+                tipo = "Tapa buraco",
+                numeroProtocolo = proximo.toString()
+            )
+            servicoIdAtual = viewModel.salvarServicoRetornandoId(rascunho)
         }
     }
 
@@ -480,6 +485,34 @@ fun ServicoFormScreen(
         }
     }
 
+    LaunchedEffect(servicoIdAtual) {
+        if (servicoIdAtual == 0L) return@LaunchedEffect
+        snapshotFlow {
+            listOf(
+                numeroProtocolo, nomeRuaServico, numeroServico, aberturaCava, limpezaEntulho,
+                pinturaLigacao.toString(), equipamentoCompactacaoSelecionado, observacoes,
+                fotoAntesUri?.toString().orEmpty(),
+                fotoCavaAbertaUri?.toString().orEmpty(),
+                fotoEspessuraUri?.toString().orEmpty(),
+                fotoConclusaoUri?.toString().orEmpty(),
+                horarioFotoAntes.orEmpty(), horarioFotoConclusao.orEmpty(),
+                latitudeAtual?.toString().orEmpty(), longitudeAtual?.toString().orEmpty()
+            )
+        }
+            .drop(1)
+            .debounce(1_000L)
+            .collect {
+                viewModel.atualizarServicoSuspend(montarServicoEntity(servicoIdAtual))
+            }
+    }
+
+    BackHandler(enabled = !modoSomenteLeitura) {
+        scope.launch {
+            salvarServicoCompletoTela()
+            onVoltar()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -487,7 +520,7 @@ fun ServicoFormScreen(
                     Text(
                         when {
                             modoSomenteLeitura -> "Consulta do serviço"
-                            servicoIdAtual == 0L -> "Cadastro de serviço"
+                            eraNovoServico -> "Cadastro de serviço"
                             else -> "Editar serviço"
                         }
                     )
@@ -579,9 +612,19 @@ fun ServicoFormScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             OutlinedTextField(
-                value = enderecoServico,
-                onValueChange = { enderecoServico = it },
-                label = { Text("Endereço") },
+                value = nomeRuaServico,
+                onValueChange = { nomeRuaServico = it },
+                label = { Text("Nome da rua") },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !modoSomenteLeitura
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = numeroServico,
+                onValueChange = { numeroServico = it },
+                label = { Text("Número") },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !modoSomenteLeitura
             )
@@ -729,7 +772,7 @@ fun ServicoFormScreen(
 
             if (exibindoFormularioArea) {
                 Text(
-                    text = "A${areasCava.size + 1}",
+                    text = if (areaEditandoIndex >= 0) "Editando A${areaEditandoIndex + 1}" else "A${areasCava.size + 1}",
                     style = MaterialTheme.typography.bodyMedium
                 )
 
@@ -808,14 +851,24 @@ fun ServicoFormScreen(
                                 val esp = espessura.replace(",", ".").toDoubleOrNull()
 
                                 if (comp != null && larg != null && esp != null) {
-                                    areasCava.add(
-                                        AreaCavaUi(
-                                            numero = areasCava.size + 1,
+                                    if (areaEditandoIndex >= 0) {
+                                        areasCava[areaEditandoIndex] = AreaCavaUi(
+                                            numero = areaEditandoIndex + 1,
                                             comprimento = comp,
                                             largura = larg,
                                             espessuraCm = esp
                                         )
-                                    )
+                                        areaEditandoIndex = -1
+                                    } else {
+                                        areasCava.add(
+                                            AreaCavaUi(
+                                                numero = areasCava.size + 1,
+                                                comprimento = comp,
+                                                largura = larg,
+                                                espessuraCm = esp
+                                            )
+                                        )
+                                    }
 
                                     comprimento = ""
                                     largura = ""
@@ -858,7 +911,7 @@ fun ServicoFormScreen(
                 }
             }
 
-            areasCava.forEach { area ->
+            areasCava.forEachIndexed { index, area ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -867,10 +920,44 @@ fun ServicoFormScreen(
                     Column(
                         modifier = Modifier.padding(12.dp)
                     ) {
-                        Text(
-                            text = "Área ${area.numero}",
-                            style = MaterialTheme.typography.titleSmall
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Área ${index + 1}",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            if (!modoSomenteLeitura) {
+                                Row {
+                                    IconButton(onClick = {
+                                        comprimento = formatarDecimalTruncado(area.comprimento)
+                                        largura = formatarDecimalTruncado(area.largura)
+                                        espessura = formatarDecimalTruncado(area.espessuraCm)
+                                        areaEditandoIndex = index
+                                        exibindoFormularioArea = true
+                                    }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Editar área")
+                                    }
+                                    IconButton(onClick = {
+                                        areasCava.removeAt(index)
+                                        when {
+                                            areaEditandoIndex == index -> {
+                                                areaEditandoIndex = -1
+                                                comprimento = ""
+                                                largura = ""
+                                                espessura = "5,00"
+                                            }
+                                            areaEditandoIndex > index -> areaEditandoIndex--
+                                        }
+                                        if (areasCava.isEmpty()) exibindoFormularioArea = true
+                                    }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Excluir área")
+                                    }
+                                }
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(4.dp))
 
@@ -894,6 +981,7 @@ fun ServicoFormScreen(
 
                 OutlinedButton(
                     onClick = {
+                        areaEditandoIndex = -1
                         exibindoFormularioArea = true
                         comprimento = ""
                         largura = ""
@@ -1112,25 +1200,28 @@ fun ServicoFormScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            Button(
-                onClick = {
-                    scope.launch {
-                        salvarServicoCompletoTela()
-                        onSalvarConcluir()
-                    }
-                },
+            OutlinedTextField(
+                value = observacoes,
+                onValueChange = { observacoes = it },
+                label = { Text("Observações") },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = numeroProtocolo.isNotBlank() &&
-                        enderecoServico.isNotBlank() &&
-                        !modoSomenteLeitura
-            ) {
-                Text("Salvar serviço")
-            }
+                minLines = 3,
+                enabled = !modoSomenteLeitura
+            )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedButton(
-                onClick = onVoltar,
+                onClick = {
+                    if (!modoSomenteLeitura) {
+                        scope.launch {
+                            salvarServicoCompletoTela()
+                            onVoltar()
+                        }
+                    } else {
+                        onVoltar()
+                    }
+                },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Voltar")

@@ -18,11 +18,17 @@ interface ObrasDao {
     @Insert
     suspend fun inserirObra(obra: ObraEntity): Long
 
+    @Update
+    suspend fun atualizarObra(obra: ObraEntity)
+
     @Query("SELECT * FROM obras WHERE id = :obraId LIMIT 1")
     suspend fun buscarObraPorId(obraId: Long): ObraEntity?
 
     @Query("SELECT * FROM diarios WHERE obraId = :obraId ORDER BY id DESC")
     fun listarDiariosDaObra(obraId: Long): Flow<List<DiarioEntity>>
+
+    @Query("SELECT * FROM diarios WHERE diarioFechado = 1 AND sincronizado = 0")
+    suspend fun listarDiariosPendentesSincronizacao(): List<DiarioEntity>
 
     @Insert
     suspend fun inserirDiario(diario: DiarioEntity): Long
@@ -237,6 +243,9 @@ interface ObrasDao {
     WHERE id = :id
     """)
     suspend fun atualizarObservacaoDesvio(id: Long, observacao: String)
+
+    @Query("UPDATE desvios SET fotoTicketUri = :fotoUri WHERE id = :id")
+    suspend fun atualizarFotoDesvio(id: Long, fotoUri: String)
 
     @Query("SELECT * FROM desvios WHERE id = :id LIMIT 1")
     suspend fun buscarDesvioPorId(id: Long): DesvioItemEntity?
