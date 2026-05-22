@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "388372781583",
+    "project_id": "diario-obras-eletronicovi",
+    "storage_bucket": "diario-obras-eletronicovi.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:388372781583:android:48649373eb50955b76a17a",
+        "android_client_info": {
+          "package_name": "com.example.diarioobras"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzwk6dF4UstAXGEqrqjoPY-RKh7IR4CtQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:388372781583:android:f796e66fe2f5bb4576a17a",
+        "android_client_info": {
+          "package_name": "com.example.diarioobras.dev"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzwk6dF4UstAXGEqrqjoPY-RKh7IR4CtQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

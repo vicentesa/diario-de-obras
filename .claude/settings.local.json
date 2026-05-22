@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(grep -v \"//\")",
+      "PowerShell(\\(Get-Content \"C:\\\\users\\\\vicen\\\\AndroidStudioProjects\\\\DiarioObras\\\\app\\\\src\\\\main\\\\java\\\\com\\\\example\\\\diarioobras\\\\ui\\\\theme\\\\DiarioEtapasScreen.kt\" | Measure-Object -Line\\).Lines)",
+      "Bash(./gradlew assembleDebug *)",
+      "Bash(cmd *)",
+      "PowerShell(& \"C:\\\\Users\\\\vicen\\\\AndroidStudioProjects\\\\DiarioObras\\\\gradlew.bat\" assembleDebug 2>&1)",
+      "Bash(./gradlew :app:compileDebugKotlin --daemon)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; Set-Location \"C:\\\\Users\\\\vicen\\\\AndroidStudioProjects\\\\DiarioObras\"; .\\\\gradlew :app:compileDebugKotlin --daemon 2>&1 | Select-Object -Last 50)",
+      "Bash(grep -n \"EtapaCard\\\\|// Etapa\\\\|etapa.*{$\\\\|Etapa.*{\\\\|HoraMinutoDialog\\\\|AlertDialog\\\\|ModalBottomSheet\\\\|mostrar.*=\\\\s*true\\\\|Dialog\\(\" \"C:\\\\Users\\\\vicen\\\\AndroidStudioProjects\\\\DiarioObras\\\\app\\\\src\\\\main\\\\java\\\\com\\\\example\\\\diarioobras\\\\ui\\\\theme\\\\DiarioEtapasScreen.kt\")",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; Set-Location \"C:\\\\Users\\\\vicen\\\\AndroidStudioProjects\\\\DiarioObras\"; .\\\\gradlew :app:compileDebugKotlin --daemon 2>&1 | Select-Object -Last 20)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; Set-Location \"C:\\\\Users\\\\vicen\\\\AndroidStudioProjects\\\\DiarioObras\"; .\\\\gradlew :app:compileDebugKotlin --daemon 2>&1 | Select-Object -Last 25)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; Set-Location \"C:\\\\Users\\\\vicen\\\\AndroidStudioProjects\\\\DiarioObras\"; .\\\\gradlew :app:compileDebugKotlin --daemon 2>&1 | Select-Object -Last 15)",
+      "Bash(Find \"C:\\\\Users\\\\vicen\\\\AndroidStudioProjects\\\\DiarioObras\\\\app\\\\src\\\\main\\\\java\\\\com\\\\example\\\\diarioobras\\\\data\" -name \"*.kt\" -type f)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; cd C:\\\\Users\\\\vicen\\\\AndroidStudioProjects\\\\DiarioObras; .\\\\gradlew compileDebugKotlin 2>&1 | Select-Object -Last 30)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; cd C:\\\\Users\\\\vicen\\\\AndroidStudioProjects\\\\DiarioObras; .\\\\gradlew compileDebugKotlin 2>&1 | Select-Object -Last 50)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; cd C:\\\\Users\\\\vicen\\\\AndroidStudioProjects\\\\DiarioObras; .\\\\gradlew compileDebugKotlin 2>&1 | Select-Object -Last 40)",
+      "PowerShell(.\\\\gradlew assembleDebug --no-daemon 2>&1 | Select-Object -Last 60)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; .\\\\gradlew assembleDebug --no-daemon 2>&1 | Select-Object -Last 60)",
+      "PowerShell(cd \"C:\\\\Users\\\\vicen\\\\AndroidStudioProjects\\\\DiarioObras\"; $env:JAVA_HOME = \"C:\\\\Users\\\\vicen\\\\AppData\\\\Local\\\\Programs\\\\Android Studio\\\\jbr\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; .\\\\gradlew.bat assembleDebug --no-daemon 2>&1 | Select-Object -Last 80)",
+      "PowerShell(Get-ChildItem *)"
+    ]
+  }
+}
